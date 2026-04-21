@@ -12,10 +12,11 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(200))
     full_name: Mapped[str] = mapped_column(String(200))
     role: Mapped[str] = mapped_column(String(30))
-    # super_admin | university_admin | department_head | timetable_officer | lecturer | student
+    # super_admin | university_admin | faculty_head | timetable_officer | lecturer | student
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     university_id: Mapped[Optional[int]] = mapped_column(ForeignKey("universities.id"), nullable=True)
     department_id: Mapped[Optional[int]] = mapped_column(ForeignKey("departments.id"), nullable=True)
+    faculty_id: Mapped[Optional[int]] = mapped_column(ForeignKey("faculties.id"), nullable=True)
 
     lecturer: Mapped[Optional["Lecturer"]] = relationship(back_populates="user", uselist=False)
     student: Mapped[Optional["Student"]] = relationship(back_populates="user", uselist=False)

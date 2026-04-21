@@ -9,6 +9,7 @@ class UserCreate(BaseModel):
     role: str
     university_id: Optional[int] = None
     department_id: Optional[int] = None
+    faculty_id: Optional[int] = None
 
 
 class UserOut(BaseModel):
@@ -19,6 +20,7 @@ class UserOut(BaseModel):
     is_active: bool
     university_id: Optional[int]
     department_id: Optional[int]
+    faculty_id: Optional[int]
 
     model_config = {"from_attributes": True}
 

@@ -23,6 +23,7 @@ class UserOut(BaseModel):
     is_active: bool
     university_id: int | None
     department_id: int | None
+    faculty_id: int | None
 
     model_config = {"from_attributes": True}
 

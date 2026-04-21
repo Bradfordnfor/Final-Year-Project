@@ -1,14 +1,14 @@
 from typing import Optional
 from pydantic import BaseModel, field_validator
 
-VALID_ROOM_TYPES = {"lecture_hall", "lab", "studio"}
+VALID_ROOM_TYPES = {"lecture_hall", "lab", "outdoor"}
 
 
 class RoomCreate(BaseModel):
     name: str
     capacity: int
     room_type: str
-    university_id: int
+    building_id: int
 
     @field_validator("room_type")
     @classmethod
@@ -22,6 +22,7 @@ class RoomUpdate(BaseModel):
     name: Optional[str] = None
     capacity: Optional[int] = None
     room_type: Optional[str] = None
+    is_active: Optional[bool] = None
 
     @field_validator("room_type")
     @classmethod
@@ -36,6 +37,7 @@ class RoomOut(BaseModel):
     name: str
     capacity: int
     room_type: str
-    university_id: int
+    is_active: bool
+    building_id: int
 
     model_config = {"from_attributes": True}

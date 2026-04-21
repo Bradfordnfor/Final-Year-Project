@@ -41,11 +41,11 @@ def require_university_admin(user: User = Depends(get_current_user)) -> User:
     return require_roles("super_admin", "university_admin")(user)
 
 
-def require_department_head(user: User = Depends(get_current_user)) -> User:
-    return require_roles("super_admin", "university_admin", "department_head")(user)
+def require_faculty_head(user: User = Depends(get_current_user)) -> User:
+    return require_roles("super_admin", "university_admin", "faculty_head")(user)
 
 
 def require_timetable_officer(user: User = Depends(get_current_user)) -> User:
     return require_roles(
-        "super_admin", "university_admin", "department_head", "timetable_officer"
+        "super_admin", "university_admin", "faculty_head", "timetable_officer"
     )(user)

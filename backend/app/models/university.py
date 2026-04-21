@@ -12,7 +12,7 @@ class University(Base):
     overflow_threshold: Mapped[float] = mapped_column(Float, default=0.20)
 
     faculties: Mapped[list["Faculty"]] = relationship(back_populates="university")
-    rooms: Mapped[list["Room"]] = relationship(back_populates="university")
+    buildings: Mapped[list["Building"]] = relationship(back_populates="university")
     semesters: Mapped[list["Semester"]] = relationship(back_populates="university")
 
 

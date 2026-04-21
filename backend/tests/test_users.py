@@ -58,6 +58,31 @@ def test_create_student_profile(client, auth_headers):
     assert response.json()["user_id"] == user["id"]
 
 
+def test_create_faculty_head_with_faculty_id(client, auth_headers):
+    uni = client.post("/universities/", json={"name": "UB", "slug": "ub"}, headers=auth_headers).json()
+    faculty = client.post("/faculties/", json={
+        "name": "FET", "code": "FET", "university_id": uni["id"],
+    }, headers=auth_headers).json()
+    response = client.post("/users/", json={
+        "email": "fhead@ub.cm", "password": "pass123",
+        "full_name": "FET Head", "role": "faculty_head",
+        "faculty_id": faculty["id"],
+    }, headers=auth_headers)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["role"] == "faculty_head"
+    assert data["faculty_id"] == faculty["id"]
+
+
+def test_faculty_id_optional_for_other_roles(client, auth_headers):
+    response = client.post("/users/", json={
+        "email": "officer@ub.cm", "password": "pass123",
+        "full_name": "T Officer", "role": "timetable_officer",
+    }, headers=auth_headers)
+    assert response.status_code == 201
+    assert response.json()["faculty_id"] is None
+
+
 def test_add_lecturer_availability(client, auth_headers):
     dept = setup_department(client, auth_headers)
     user = client.post("/users/", json={

@@ -44,13 +44,20 @@ def seed():
         db.add_all([dept_ee, dept_ce])
         db.flush()
 
+        building_main = models.Building(
+            name="FET Main Block",
+            university_id=university.id,
+        )
+        db.add(building_main)
+        db.flush()
+
         room_amp = models.Room(
             name="Amphi 750", capacity=750,
-            room_type="lecture_hall", university_id=university.id,
+            room_type="lecture_hall", building_id=building_main.id,
         )
         room_lab = models.Room(
             name="EE Lab 1", capacity=30,
-            room_type="lab", university_id=university.id,
+            room_type="lab", building_id=building_main.id,
         )
         db.add_all([room_amp, room_lab])
         db.flush()
@@ -85,6 +92,15 @@ def seed():
             is_active=True,
             university_id=university.id,
         )
+        fet_head = models.User(
+            email="fethead@ub.cm",
+            hashed_password=get_password_hash("fethead123"),
+            full_name="FET Faculty Head",
+            role="faculty_head",
+            is_active=True,
+            university_id=university.id,
+            faculty_id=faculty.id,
+        )
         student_user = models.User(
             email="student@ub.cm",
             hashed_password=get_password_hash("student123"),
@@ -94,11 +110,12 @@ def seed():
             university_id=university.id,
             department_id=dept_ee.id,
         )
-        db.add_all([admin, student_user])
+        db.add_all([admin, fet_head, student_user])
         db.commit()
         print("Seed complete.")
-        print("  Admin:   admin@ub.cm / admin123")
-        print("  Student: student@ub.cm / student123")
+        print("  Admin:    admin@ub.cm / admin123")
+        print("  FET Head: fethead@ub.cm / fethead123")
+        print("  Student:  student@ub.cm / student123")
     except Exception as e:
         db.rollback()
         raise e
