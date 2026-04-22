@@ -1,0 +1,35 @@
+import '../models/user.dart';
+import 'api_client.dart';
+
+class UserApi {
+  final ApiClient _client;
+  UserApi(this._client);
+
+  Future<List<UserModel>> getUsers() async {
+    final response = await _client.get('/users/');
+    return (response.data as List)
+        .map((e) => UserModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<UserModel> createUser(Map<String, dynamic> data) async {
+    final response = await _client.post('/users/', data: data);
+    return UserModel.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<List<Map<String, dynamic>>> getLecturerAvailability(int lecturerId) async {
+    final response = await _client.get('/lecturers/$lecturerId/availability');
+    return List<Map<String, dynamic>>.from(response.data as List);
+  }
+
+  Future<void> addAvailability(int lecturerId, int timeSlotId) async {
+    await _client.post('/lecturers/availability/', data: {
+      'lecturer_id': lecturerId,
+      'time_slot_id': timeSlotId,
+    });
+  }
+
+  Future<void> deleteAvailability(int availabilityId) async {
+    await _client.delete('/lecturers/availability/$availabilityId');
+  }
+}

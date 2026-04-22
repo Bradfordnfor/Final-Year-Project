@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(venv/Scripts/python -c \"from app.main import app; from app.database import engine; print\\('OK'\\)\")",
+      "Bash(venv/Scripts/python -c \"from app.models import University, Faculty, Department, Room, Semester, TimeSlot, Level, Class, ClassGroup, User, Lecturer, Student, Course, SharedCourse; print\\('All models OK'\\)\")",
+      "Bash(venv/Scripts/alembic init *)",
+      "Bash(venv/Scripts/pytest tests/test_courses.py -v)",
+      "Bash(venv/Scripts/pytest tests/test_users.py -v)",
+      "Bash(venv/Scripts/python.exe -m alembic revision --autogenerate -m \"add_timetable_models\")",
+      "Bash(venv/Scripts/python.exe -m alembic upgrade head)",
+      "Bash(venv/Scripts/python.exe -m pytest tests/test_preprocessor.py -v)",
+      "Bash(venv/Scripts/python.exe -m pytest tests/test_solver.py -v)",
+      "Bash(venv/Scripts/python.exe -m pytest tests/ --tb=short)",
+      "Bash(flutter create *)",
+      "Bash(flutter build *)"
+    ]
+  }
+}
