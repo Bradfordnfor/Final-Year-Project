@@ -129,9 +129,24 @@ class _RoomsTabState extends State<_RoomsTab> {
     } catch (_) {}
 
     if (!mounted) return;
+
+    // Cannot add a room without a building
+    if (buildings.isEmpty) {
+      Get.snackbar(
+        'No Buildings Found',
+        'You must add a building before adding rooms.',
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 4),
+      );
+      return;
+    }
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
           left: 24, right: 24, top: 24,
@@ -142,47 +157,75 @@ class _RoomsTabState extends State<_RoomsTab> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Add Room', style: Theme.of(ctx).textTheme.titleLarge),
+              Row(
+                children: [
+                  Text('Add Room', style: Theme.of(ctx).textTheme.titleLarge),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
+              // Building — REQUIRED
+              DropdownButtonFormField<int>(
+                value: selectedBuildingId,
+                decoration: const InputDecoration(
+                  labelText: 'Building *',
+                  prefixIcon: Icon(Icons.apartment_outlined),
+                ),
+                items: buildings.map((b) => DropdownMenuItem(
+                  value: b.id, child: Text(b.name),
+                )).toList(),
+                onChanged: (v) => setSheet(() => selectedBuildingId = v),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'Room Name', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Room Name *',
+                  prefixIcon: Icon(Icons.meeting_room_outlined),
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: capCtrl,
-                decoration: const InputDecoration(labelText: 'Capacity', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Capacity *',
+                  prefixIcon: Icon(Icons.people_outline),
+                ),
                 keyboardType: TextInputType.number,
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: selectedType,
-                decoration: const InputDecoration(labelText: 'Room Type', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: 'Room Type',
+                  prefixIcon: Icon(Icons.category_outlined),
+                ),
                 items: _roomTypes.map((t) => DropdownMenuItem(
                   value: t, child: Text(t.replaceAll('_', ' ')),
                 )).toList(),
                 onChanged: (v) => setSheet(() => selectedType = v!),
               ),
-              if (buildings.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  value: selectedBuildingId,
-                  decoration: const InputDecoration(labelText: 'Building', border: OutlineInputBorder()),
-                  items: buildings.map((b) => DropdownMenuItem(
-                    value: b.id, child: Text(b.name),
-                  )).toList(),
-                  onChanged: (v) => setSheet(() => selectedBuildingId = v),
-                ),
-              ],
               const SizedBox(height: 20),
-              FilledButton(
+              FilledButton.icon(
+                icon: const Icon(Icons.add, size: 18),
                 onPressed: () async {
+                  if (nameCtrl.text.trim().isEmpty ||
+                      capCtrl.text.trim().isEmpty ||
+                      selectedBuildingId == null) {
+                    Get.snackbar('Required', 'Fill all required fields.',
+                        snackPosition: SnackPosition.BOTTOM);
+                    return;
+                  }
                   try {
                     await _api.createRoom({
                       'name': nameCtrl.text.trim(),
                       'capacity': int.parse(capCtrl.text.trim()),
                       'room_type': selectedType,
-                      if (selectedBuildingId != null) 'building_id': selectedBuildingId,
+                      'building_id': selectedBuildingId,
                     });
                     if (ctx.mounted) Navigator.pop(ctx);
                     await _load();
@@ -190,7 +233,7 @@ class _RoomsTabState extends State<_RoomsTab> {
                     Get.snackbar('Error', 'Failed: $e');
                   }
                 },
-                child: const Text('Add Room'),
+                label: const Text('Add Room'),
               ),
             ],
           ),

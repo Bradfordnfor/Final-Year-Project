@@ -9,17 +9,28 @@ class AppShell extends StatelessWidget {
   final Widget child;
   const AppShell({super.key, required this.child});
 
-  static const _destinations = [
-    _Dest(icon: Icons.dashboard_outlined, label: 'Dashboard', route: AppRoutes.dashboard),
-    _Dest(icon: Icons.calendar_month_outlined, label: 'Timetable', route: AppRoutes.timetable),
-    _Dest(icon: Icons.auto_fix_high_outlined, label: 'Generation', route: AppRoutes.generation),
-    _Dest(icon: Icons.warning_amber_outlined, label: 'Conflicts', route: AppRoutes.conflicts),
-    _Dest(icon: Icons.bar_chart_outlined, label: 'Analytics', route: AppRoutes.analytics),
-    _Dest(icon: Icons.manage_accounts_outlined, label: 'Management', route: AppRoutes.management),
+  // Primary 4 items shown on mobile bottom nav
+  static const _primary = [
+    _Dest(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, label: 'Dashboard', route: AppRoutes.dashboard),
+    _Dest(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month, label: 'Timetable', route: AppRoutes.timetable),
+    _Dest(icon: Icons.auto_fix_high_outlined, activeIcon: Icons.auto_fix_high, label: 'Generate', route: AppRoutes.generation),
+    _Dest(icon: Icons.manage_accounts_outlined, activeIcon: Icons.manage_accounts, label: 'Manage', route: AppRoutes.management),
   ];
 
+  // Additional items shown in the sidebar / More drawer
+  static const _secondary = [
+    _Dest(icon: Icons.school_outlined, activeIcon: Icons.school, label: 'Faculty Setup', route: AppRoutes.facultySetup),
+    _Dest(icon: Icons.warning_amber_outlined, activeIcon: Icons.warning_amber, label: 'Conflicts', route: AppRoutes.conflicts),
+    _Dest(icon: Icons.bar_chart_outlined, activeIcon: Icons.bar_chart, label: 'Analytics', route: AppRoutes.analytics),
+    _Dest(icon: Icons.notifications_outlined, activeIcon: Icons.notifications, label: 'Notifications', route: AppRoutes.notifications),
+    _Dest(icon: Icons.upload_file_outlined, activeIcon: Icons.upload_file, label: 'Bulk Import', route: AppRoutes.bulkImport),
+    _Dest(icon: Icons.public_outlined, activeIcon: Icons.public, label: 'Public View', route: AppRoutes.publicTimetable),
+  ];
+
+  static List<_Dest> get _all => [..._primary, ..._secondary];
+
   int _selectedIndex(String route) {
-    final idx = _destinations.indexWhere((d) => d.route == route);
+    final idx = _all.indexWhere((d) => d.route == route);
     return idx < 0 ? 0 : idx;
   }
 
@@ -31,23 +42,25 @@ class AppShell extends StatelessWidget {
     final currentRoute = Get.currentRoute;
     final selected = _selectedIndex(currentRoute);
 
-    if (width >= 1200) {
+    if (width >= 1100) {
       return _SidebarLayout(
-        destinations: _destinations,
+        primary: _primary,
+        secondary: _secondary,
         selected: selected,
         onNav: _navigate,
         child: child,
       );
-    } else if (width >= 800) {
+    } else if (width >= 720) {
       return _RailLayout(
-        destinations: _destinations,
+        destinations: _all,
         selected: selected,
         onNav: _navigate,
         child: child,
       );
     } else {
       return _BottomNavLayout(
-        destinations: _destinations,
+        primary: _primary,
+        secondary: _secondary,
         selected: selected,
         onNav: _navigate,
         child: child,
@@ -56,54 +69,98 @@ class AppShell extends StatelessWidget {
   }
 }
 
-// ── Sidebar (≥1200 px) ────────────────────────────────────────────────────────
+// ── Sidebar (≥1100 px) ────────────────────────────────────────────────────────
 
 class _SidebarLayout extends StatelessWidget {
-  final List<_Dest> destinations;
+  final List<_Dest> primary;
+  final List<_Dest> secondary;
   final int selected;
   final void Function(String) onNav;
   final Widget child;
 
   const _SidebarLayout({
-    required this.destinations,
-    required this.selected,
-    required this.onNav,
-    required this.child,
+    required this.primary, required this.secondary,
+    required this.selected, required this.onNav, required this.child,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    final allDests = [...primary, ...secondary];
+
     return Scaffold(
       body: Row(
         children: [
-          NavigationDrawer(
-            selectedIndex: selected,
-            onDestinationSelected: (i) => onNav(destinations[i].route),
-            children: [
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text(
-                  'UB Timetabling',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(color: colorScheme.primary, fontWeight: FontWeight.bold),
-                ),
+          SizedBox(
+            width: 260,
+            child: Material(
+              color: cs.surfaceContainer,
+              child: Column(
+                children: [
+                  // Logo / app name
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 28, 20, 16),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 36, height: 36,
+                          decoration: BoxDecoration(
+                            color: cs.primary,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(Icons.school, color: cs.onPrimary, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('TimeTable', style: tt.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: cs.onSurface,
+                              )),
+                              Text('University of Buea', style: tt.labelSmall?.copyWith(
+                                color: cs.outline,
+                              )),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(color: cs.outlineVariant, height: 1),
+                  const SizedBox(height: 8),
+                  // Primary nav
+                  _SectionLabel('Main'),
+                  ...primary.map((d) => _SidebarItem(
+                    dest: d,
+                    isSelected: allDests.indexOf(d) == selected,
+                    onTap: () => onNav(d.route),
+                  )),
+                  const SizedBox(height: 8),
+                  _SectionLabel('Tools'),
+                  ...secondary.map((d) => _SidebarItem(
+                    dest: d,
+                    isSelected: allDests.indexOf(d) == selected,
+                    onTap: () => onNav(d.route),
+                  )),
+                  const Spacer(),
+                  Divider(color: cs.outlineVariant, height: 1),
+                  // Notification + logout
+                  _NotificationTile(),
+                  ListTile(
+                    leading: const Icon(Icons.logout),
+                    title: const Text('Logout'),
+                    onTap: () => AuthController.to.logout(),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ),
-              const Divider(),
-              ...destinations.map(
-                (d) => NavigationDrawerDestination(
-                  icon: Icon(d.icon),
-                  label: Text(d.label),
-                ),
-              ),
-              const Divider(),
-              _NotificationTile(),
-              const _LogoutTile(),
-            ],
+            ),
           ),
+          VerticalDivider(color: cs.outlineVariant, width: 1),
           Expanded(child: child),
         ],
       ),
@@ -111,7 +168,71 @@ class _SidebarLayout extends StatelessWidget {
   }
 }
 
-// ── NavigationRail (800–1200 px) ─────────────────────────────────────────────
+class _SectionLabel extends StatelessWidget {
+  final String label;
+  const _SectionLabel(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      child: Text(
+        label.toUpperCase(),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Theme.of(context).colorScheme.outline,
+          letterSpacing: 1.2,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _SidebarItem extends StatelessWidget {
+  final _Dest dest;
+  final bool isSelected;
+  final VoidCallback onTap;
+  const _SidebarItem({required this.dest, required this.isSelected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
+      child: Material(
+        color: isSelected ? cs.primaryContainer : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(
+                  isSelected ? dest.activeIcon : dest.icon,
+                  size: 20,
+                  color: isSelected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+                ),
+                const SizedBox(width: 14),
+                Text(
+                  dest.label,
+                  style: TextStyle(
+                    color: isSelected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── NavigationRail (720–1100 px) ─────────────────────────────────────────────
 
 class _RailLayout extends StatelessWidget {
   final List<_Dest> destinations;
@@ -120,39 +241,47 @@ class _RailLayout extends StatelessWidget {
   final Widget child;
 
   const _RailLayout({
-    required this.destinations,
-    required this.selected,
-    required this.onNav,
-    required this.child,
+    required this.destinations, required this.selected,
+    required this.onNav, required this.child,
   });
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       body: Row(
         children: [
           NavigationRail(
-            selectedIndex: selected,
+            backgroundColor: cs.surfaceContainer,
+            selectedIndex: selected.clamp(0, destinations.length - 1),
             onDestinationSelected: (i) => onNav(destinations[i].route),
             labelType: NavigationRailLabelType.selected,
-            leading: _NotificationBadgeIcon(),
-            trailing: const Expanded(
+            leading: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: _NotificationBadgeIcon(),
+            ),
+            trailing: Expanded(
               child: Align(
                 alignment: Alignment.bottomCenter,
                 child: Padding(
-                  padding: EdgeInsets.only(bottom: 16),
-                  child: _LogoutTile(iconOnly: true),
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: IconButton(
+                    icon: const Icon(Icons.logout),
+                    onPressed: () => AuthController.to.logout(),
+                    tooltip: 'Logout',
+                  ),
                 ),
               ),
             ),
             destinations: destinations
                 .map((d) => NavigationRailDestination(
                       icon: Icon(d.icon),
+                      selectedIcon: Icon(d.activeIcon),
                       label: Text(d.label),
                     ))
                 .toList(),
           ),
-          const VerticalDivider(thickness: 1, width: 1),
+          VerticalDivider(color: cs.outlineVariant, width: 1),
           Expanded(child: child),
         ],
       ),
@@ -160,45 +289,102 @@ class _RailLayout extends StatelessWidget {
   }
 }
 
-// ── BottomNavigationBar (<800 px) ─────────────────────────────────────────────
+// ── BottomNavigationBar (<720 px) — max 4 + More ──────────────────────────────
 
 class _BottomNavLayout extends StatelessWidget {
-  final List<_Dest> destinations;
+  final List<_Dest> primary;
+  final List<_Dest> secondary;
   final int selected;
   final void Function(String) onNav;
   final Widget child;
 
   const _BottomNavLayout({
-    required this.destinations,
-    required this.selected,
-    required this.onNav,
-    required this.child,
+    required this.primary, required this.secondary,
+    required this.selected, required this.onNav, required this.child,
   });
+
+  // Bottom nav shows 4 primary items + a "More" button
+  int get _bottomSelected {
+    if (selected < primary.length) return selected;
+    return primary.length; // "More" tab
+  }
+
+  void _openMore(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade400,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...secondary.map((d) => ListTile(
+              leading: Icon(d.icon),
+              title: Text(d.label),
+              onTap: () {
+                Navigator.pop(context);
+                onNav(d.route);
+              },
+            )),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('Logout'),
+              onTap: () => AuthController.to.logout(),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('UB Timetabling'),
+        title: Row(
+          children: [
+            Icon(Icons.school, color: Theme.of(context).colorScheme.primary, size: 22),
+            const SizedBox(width: 8),
+            const Text('UB Timetabling'),
+          ],
+        ),
         actions: [
           _NotificationBadgeIcon(),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => AuthController.to.logout(),
-            tooltip: 'Logout',
-          ),
         ],
       ),
       body: child,
       bottomNavigationBar: NavigationBar(
-        selectedIndex: selected,
-        onDestinationSelected: (i) => onNav(destinations[i].route),
-        destinations: destinations
-            .map((d) => NavigationDestination(
-                  icon: Icon(d.icon),
-                  label: d.label,
-                ))
-            .toList(),
+        selectedIndex: _bottomSelected,
+        onDestinationSelected: (i) {
+          if (i < primary.length) {
+            onNav(primary[i].route);
+          } else {
+            _openMore(context);
+          }
+        },
+        destinations: [
+          ...primary.map((d) => NavigationDestination(
+                icon: Icon(d.icon),
+                selectedIcon: Icon(d.activeIcon),
+                label: d.label,
+              )),
+          const NavigationDestination(
+            icon: Icon(Icons.more_horiz_outlined),
+            selectedIcon: Icon(Icons.more_horiz),
+            label: 'More',
+          ),
+        ],
       ),
     );
   }
@@ -222,8 +408,7 @@ class _NotificationBadgeIcon extends StatelessWidget {
           ),
           if (count > 0)
             Positioned(
-              right: 4,
-              top: 4,
+              right: 4, top: 4,
               child: Container(
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
@@ -261,32 +446,12 @@ class _NotificationTile extends StatelessWidget {
   }
 }
 
-class _LogoutTile extends StatelessWidget {
-  final bool iconOnly;
-  const _LogoutTile({this.iconOnly = false});
-
-  @override
-  Widget build(BuildContext context) {
-    if (iconOnly) {
-      return IconButton(
-        icon: const Icon(Icons.logout),
-        onPressed: () => AuthController.to.logout(),
-        tooltip: 'Logout',
-      );
-    }
-    return ListTile(
-      leading: const Icon(Icons.logout),
-      title: const Text('Logout'),
-      onTap: () => AuthController.to.logout(),
-    );
-  }
-}
-
 // ── Data class ────────────────────────────────────────────────────────────────
 
 class _Dest {
   final IconData icon;
+  final IconData activeIcon;
   final String label;
   final String route;
-  const _Dest({required this.icon, required this.label, required this.route});
+  const _Dest({required this.icon, required this.activeIcon, required this.label, required this.route});
 }

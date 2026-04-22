@@ -18,7 +18,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    TimetableController.to.fetchTimetables();
+    TimetableController.to.fetchRuns();
     NotificationController.to.fetchNotifications();
   }
 
@@ -31,7 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         AppConstants.roleLabels[user.role] ?? user.role;
 
     return Obx(() {
-      final timetables = TimetableController.to.timetables;
+      final timetables = TimetableController.to.runs;
       final unread = NotificationController.to.unreadCountValue;
 
       return ListView(
@@ -61,7 +61,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               _StatCard(
                 icon: Icons.calendar_month_outlined,
-                label: 'Timetables',
+                label: 'Timetable Runs',
                 value: '${timetables.length}',
                 color: Theme.of(context).colorScheme.primary,
                 onTap: () => Get.offAllNamed(AppRoutes.timetable),
@@ -143,11 +143,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Icons.calendar_month_outlined,
                         color: _statusColor(context, t.status),
                       ),
-                      title: Text('Timetable #${t.id}'),
-                      subtitle: Text('Department ${t.departmentId}'),
+                      title: Text(t.name),
+                      subtitle: Text(
+                          '${t.facultyIds.length} facult${t.facultyIds.length == 1 ? 'y' : 'ies'}'),
                       trailing: _StatusBadge(t.status),
                       onTap: () {
-                        TimetableController.to.selectTimetable(t.id);
+                        TimetableController.to.selectRun(t.id);
                         Get.offAllNamed(AppRoutes.timetable);
                       },
                     ),

@@ -1,8 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, universities, faculties, departments, rooms, semesters, academic, courses, users, buildings, timetable, export
+from app.routers import (
+    auth, universities, faculties, departments, rooms, semesters,
+    academic, courses, users, buildings, timetable, export, faculty_setup,
+)
 
-app = FastAPI(title="University Timetabling API", version="1.0.0")
+app = FastAPI(title="University Timetabling API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,6 +26,7 @@ app.include_router(academic.router)
 app.include_router(courses.router)
 app.include_router(users.router)
 app.include_router(timetable.router)
+app.include_router(faculty_setup.router)
 app.include_router(export.router)
 
 

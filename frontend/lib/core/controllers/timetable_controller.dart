@@ -10,8 +10,8 @@ import 'auth_controller.dart';
 class TimetableController extends GetxController {
   static TimetableController get to => Get.find();
 
-  final RxList<TimetableModel> timetables = <TimetableModel>[].obs;
-  final Rx<TimetableModel?> selected = Rx<TimetableModel?>(null);
+  final RxList<TimetableRun> runs = <TimetableRun>[].obs;
+  final Rx<TimetableRun?> selected = Rx<TimetableRun?>(null);
   final RxList<TimetableEntry> entries = <TimetableEntry>[].obs;
   final RxList<TimetableConflict> conflicts = <TimetableConflict>[].obs;
 
@@ -30,87 +30,106 @@ class TimetableController extends GetxController {
     super.onClose();
   }
 
-  Future<void> fetchTimetables() async {
+  Future<void> fetchRuns() async {
     isLoading.value = true;
     try {
-      timetables.value = await _api.getTimetables();
+      runs.value = await _api.getRuns();
     } finally {
       isLoading.value = false;
     }
   }
 
-  Future<void> selectTimetable(int id) async {
+  Future<void> selectRun(int id) async {
     isLoading.value = true;
     try {
-      selected.value = await _api.getTimetable(id);
+      selected.value = await _api.getRun(id);
       await Future.wait([loadEntries(id), loadConflicts(id)]);
     } finally {
       isLoading.value = false;
     }
   }
 
-  Future<void> loadEntries(int timetableId) async {
-    entries.value = await _api.getEntries(timetableId);
+  Future<void> loadEntries(int runId) async {
+    entries.value = await _api.getEntries(runId);
   }
 
-  Future<void> loadConflicts(int timetableId) async {
-    conflicts.value = await _api.getConflicts(timetableId);
+  Future<void> loadConflicts(int runId) async {
+    conflicts.value = await _api.getConflicts(runId);
   }
 
-  Future<void> create(int semesterId, int departmentId) async {
+  Future<void> createRun({
+    required String name,
+    required int semesterId,
+    required List<int> facultyIds,
+    required List<int> buildingIds,
+  }) async {
     isLoading.value = true;
     try {
-      final t = await _api.createTimetable(semesterId, departmentId);
-      timetables.add(t);
-      selected.value = t;
+      final run = await _api.createRun(
+        name: name,
+        semesterId: semesterId,
+        facultyIds: facultyIds,
+        buildingIds: buildingIds,
+      );
+      runs.add(run);
+      selected.value = run;
     } finally {
       isLoading.value = false;
     }
   }
 
-  Future<void> generate(int timetableId) async {
-    isGenerating.value = true;
-    jobStatus.value = 'pending';
-    await _api.triggerGeneration(timetableId);
-    _startPolling(timetableId);
+  Future<void> deleteRun(int id) async {
+    await _api.deleteRun(id);
+    runs.removeWhere((r) => r.id == id);
+    if (selected.value?.id == id) {
+      selected.value = null;
+      entries.clear();
+      conflicts.clear();
+    }
   }
 
-  void _startPolling(int timetableId) {
+  Future<void> generate(int runId) async {
+    isGenerating.value = true;
+    jobStatus.value = 'pending';
+    await _api.triggerGeneration(runId);
+    _startPolling(runId);
+  }
+
+  void _startPolling(int runId) {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      final status = await _api.getJobStatus(timetableId);
+      final status = await _api.getJobStatus(runId);
       jobStatus.value = status['status'] as String? ?? '';
       if (jobStatus.value == 'completed' || jobStatus.value == 'failed') {
         _pollTimer?.cancel();
         isGenerating.value = false;
         if (jobStatus.value == 'completed') {
-          await selectTimetable(timetableId);
+          await selectRun(runId);
         }
       }
     });
   }
 
-  Future<void> advanceStatus(int timetableId) async {
-    final updated = await _api.advanceStatus(timetableId);
-    _replaceTimetable(updated);
+  Future<void> advanceStatus(int runId) async {
+    final updated = await _api.advanceStatus(runId);
+    _replaceRun(updated);
   }
 
-  Future<void> publish(int timetableId) async {
-    final updated = await _api.publish(timetableId);
-    _replaceTimetable(updated);
+  Future<void> publish(int runId) async {
+    final updated = await _api.publish(runId);
+    _replaceRun(updated);
   }
 
   Future<void> resolveConflict(
-      int timetableId, int conflictId, String resolution) async {
-    final updated =
-        await _api.resolveConflict(timetableId, conflictId, resolution);
+      int runId, int conflictId, String resolution) async {
+    final updated = await _api.resolveConflict(runId, conflictId, resolution);
     final idx = conflicts.indexWhere((c) => c.id == conflictId);
     if (idx != -1) conflicts[idx] = updated;
   }
 
-  void _replaceTimetable(TimetableModel updated) {
-    final idx = timetables.indexWhere((t) => t.id == updated.id);
-    if (idx != -1) timetables[idx] = updated;
+  void _replaceRun(TimetableRun updated) {
+    final idx = runs.indexWhere((r) => r.id == updated.id);
+    if (idx != -1) runs[idx] = updated;
     if (selected.value?.id == updated.id) selected.value = updated;
   }
 }

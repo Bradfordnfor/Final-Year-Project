@@ -3,10 +3,12 @@ import 'package:get/get.dart';
 
 import '../../core/api/academic_api.dart';
 import '../../core/api/api_client.dart';
+import '../../core/api/university_api.dart';
 import '../../core/controllers/auth_controller.dart';
 import '../../core/controllers/timetable_controller.dart';
 import '../../core/models/academic.dart';
 import '../../core/models/timetable.dart';
+import '../../core/models/university.dart';
 
 class TimetableScreen extends StatefulWidget {
   const TimetableScreen({super.key});
@@ -17,83 +19,217 @@ class TimetableScreen extends StatefulWidget {
 
 class _TimetableScreenState extends State<TimetableScreen> {
   List<Semester> _semesters = [];
+  List<Faculty> _faculties = [];
+  List<Building> _buildings = [];
   List<TimeSlot> _timeSlots = [];
-  bool _loadingMeta = false;
+  bool _loadingMeta = true;
 
   @override
   void initState() {
     super.initState();
-    TimetableController.to.fetchTimetables();
-    _loadSemesters();
+    TimetableController.to.fetchRuns();
+    _loadMeta();
   }
 
-  Future<void> _loadSemesters() async {
-    setState(() => _loadingMeta = true);
+  Future<void> _loadMeta() async {
     try {
-      _semesters = await AcademicApi(
-              ApiClient(token: AuthController.to.token))
-          .getSemesters();
-    } finally {
-      setState(() => _loadingMeta = false);
+      final token = AuthController.to.token;
+      final client = ApiClient(token: token);
+      final results = await Future.wait([
+        AcademicApi(client).getSemesters(),
+        UniversityApi(client).getFaculties(),
+        UniversityApi(client).getBuildings(),
+      ]);
+      if (mounted) {
+        setState(() {
+          _semesters = results[0] as List<Semester>;
+          _faculties = results[1] as List<Faculty>;
+          _buildings = results[2] as List<Building>;
+          _loadingMeta = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingMeta = false);
     }
   }
 
   Future<void> _loadTimeSlots(int semesterId) async {
-    _timeSlots = await AcademicApi(
-            ApiClient(token: AuthController.to.token))
-        .getTimeSlots(semesterId);
-    setState(() {});
+    try {
+      final ts = await AcademicApi(ApiClient(token: AuthController.to.token))
+          .getTimeSlots(semesterId);
+      if (mounted) setState(() => _timeSlots = ts);
+    } catch (_) {}
   }
 
   void _showCreateDialog() {
+    if (_loadingMeta) return;
     if (_semesters.isEmpty) {
-      Get.snackbar('No Semesters', 'No semesters found.',
+      Get.snackbar('No Data', 'Add semesters first.',
           snackPosition: SnackPosition.BOTTOM);
       return;
     }
-    Semester? picked = _semesters.first;
-    final deptCtrl = TextEditingController();
+
+    final nameCtrl = TextEditingController();
+    Semester? semester = _semesters.isNotEmpty ? _semesters.first : null;
+    final Set<int> selectedFaculties = {};
+    final Set<int> selectedBuildings = {};
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => AlertDialog(
-          title: const Text('New Timetable'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<Semester>(
-                initialValue: picked,
-                decoration: const InputDecoration(
-                    labelText: 'Semester', border: OutlineInputBorder()),
-                items: _semesters
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s.name)))
-                    .toList(),
-                onChanged: (v) => setS(() => picked = v),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: deptCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                    labelText: 'Department ID', border: OutlineInputBorder()),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () async {
-                final deptId = int.tryParse(deptCtrl.text);
-                if (deptId == null || picked == null) return;
-                Navigator.pop(ctx);
-                await TimetableController.to.create(picked!.id, deptId);
-              },
-              child: const Text('Create'),
+        builder: (ctx, setS) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520, maxHeight: 640),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 16, 16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(ctx).colorScheme.primaryContainer,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_month,
+                          color: Theme.of(ctx).colorScheme.onPrimaryContainer),
+                      const SizedBox(width: 12),
+                      Text('New Timetable Run',
+                          style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(ctx).colorScheme.onPrimaryContainer,
+                          )),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Run name
+                        TextField(
+                          controller: nameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Run name',
+                            hintText: 'e.g. FET — Semester 1 2025/26',
+                            prefixIcon: Icon(Icons.label_outline),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Semester
+                        DropdownButtonFormField<Semester>(
+                          value: semester,
+                          decoration: const InputDecoration(
+                            labelText: 'Semester',
+                            prefixIcon: Icon(Icons.date_range_outlined),
+                          ),
+                          items: _semesters.map((s) =>
+                              DropdownMenuItem(value: s, child: Text(s.name))).toList(),
+                          onChanged: (v) => setS(() => semester = v),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Faculties
+                        Text('Faculties', style: Theme.of(ctx).textTheme.labelLarge),
+                        const SizedBox(height: 8),
+                        if (_faculties.isEmpty)
+                          const Text('No faculties found')
+                        else
+                          Wrap(
+                            spacing: 8, runSpacing: 8,
+                            children: _faculties.map((f) {
+                              final sel = selectedFaculties.contains(f.id);
+                              return FilterChip(
+                                label: Text('${f.code} — ${f.name}'),
+                                selected: sel,
+                                onSelected: (v) => setS(() =>
+                                    v ? selectedFaculties.add(f.id)
+                                      : selectedFaculties.remove(f.id)),
+                              );
+                            }).toList(),
+                          ),
+                        const SizedBox(height: 20),
+
+                        // Buildings
+                        Text('Buildings', style: Theme.of(ctx).textTheme.labelLarge),
+                        const SizedBox(height: 8),
+                        if (_buildings.isEmpty)
+                          const Text('No buildings found')
+                        else
+                          Wrap(
+                            spacing: 8, runSpacing: 8,
+                            children: _buildings.map((b) {
+                              final sel = selectedBuildings.contains(b.id);
+                              return FilterChip(
+                                label: Text(b.name),
+                                selected: sel,
+                                onSelected: (v) => setS(() =>
+                                    v ? selectedBuildings.add(b.id)
+                                      : selectedBuildings.remove(b.id)),
+                              );
+                            }).toList(),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () async {
+                            if (nameCtrl.text.trim().isEmpty) {
+                              Get.snackbar('Required', 'Enter a run name.',
+                                  snackPosition: SnackPosition.BOTTOM);
+                              return;
+                            }
+                            if (semester == null) return;
+                            if (selectedFaculties.isEmpty) {
+                              Get.snackbar('Required', 'Select at least one faculty.',
+                                  snackPosition: SnackPosition.BOTTOM);
+                              return;
+                            }
+                            if (selectedBuildings.isEmpty) {
+                              Get.snackbar('Required', 'Select at least one building.',
+                                  snackPosition: SnackPosition.BOTTOM);
+                              return;
+                            }
+                            Navigator.pop(ctx);
+                            await TimetableController.to.createRun(
+                              name: nameCtrl.text.trim(),
+                              semesterId: semester!.id,
+                              facultyIds: selectedFaculties.toList(),
+                              buildingIds: selectedBuildings.toList(),
+                            );
+                          },
+                          child: const Text('Create'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -101,88 +237,101 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canManage =
-        AuthController.to.user.value?.canManageTimetable ?? false;
+    final canManage = AuthController.to.user.value?.canManageTimetable ?? false;
+    final cs = Theme.of(context).colorScheme;
 
     return Obx(() {
       final ctrl = TimetableController.to;
-      final timetables = ctrl.timetables;
+      final runs = ctrl.runs;
       final selected = ctrl.selected.value;
 
       return Column(
         children: [
-          // Top bar
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          // Header bar
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
             child: Row(
               children: [
-                Text('Timetables',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(fontWeight: FontWeight.bold)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Timetable Runs',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold)),
+                    Text('${runs.length} run${runs.length == 1 ? '' : 's'}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: cs.outline)),
+                  ],
+                ),
                 const Spacer(),
                 if (canManage)
                   FilledButton.icon(
                     onPressed: _loadingMeta ? null : _showCreateDialog,
                     icon: const Icon(Icons.add, size: 18),
-                    label: const Text('New'),
+                    label: const Text('New Run'),
                   ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Left: timetable list
+                // Left panel: run list
                 SizedBox(
-                  width: 220,
+                  width: 240,
                   child: ctrl.isLoading.value
                       ? const Center(child: CircularProgressIndicator())
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(8),
-                          itemCount: timetables.length,
-                          itemBuilder: (_, i) {
-                            final t = timetables[i];
-                            final isActive = selected?.id == t.id;
-                            return Card(
-                              color: isActive
-                                  ? Theme.of(context)
-                                      .colorScheme
-                                      .primaryContainer
-                                  : null,
-                              child: ListTile(
-                                dense: true,
-                                title: Text('Timetable #${t.id}'),
-                                subtitle: Text(
-                                  t.status.replaceAll('_', ' '),
-                                  style: TextStyle(
-                                      color: _statusColor(context, t.status)),
-                                ),
-                                selected: isActive,
-                                onTap: () async {
-                                  await ctrl.selectTimetable(t.id);
-                                  if (t.semesterId != 0) {
-                                    await _loadTimeSlots(t.semesterId);
-                                  }
-                                },
+                      : runs.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.calendar_today_outlined,
+                                      size: 48, color: cs.outline),
+                                  const SizedBox(height: 12),
+                                  Text('No runs yet',
+                                      style: TextStyle(color: cs.outline)),
+                                ],
                               ),
-                            );
-                          },
-                        ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.all(8),
+                              itemCount: runs.length,
+                              itemBuilder: (_, i) {
+                                final r = runs[i];
+                                final isActive = selected?.id == r.id;
+                                return _RunCard(
+                                  run: r,
+                                  isSelected: isActive,
+                                  onTap: () async {
+                                    await ctrl.selectRun(r.id);
+                                    await _loadTimeSlots(r.semesterId);
+                                  },
+                                );
+                              },
+                            ),
                 ),
-                const VerticalDivider(thickness: 1, width: 1),
-                // Right: grid
+                VerticalDivider(color: cs.outlineVariant, width: 1),
+                // Right panel: timetable grid
                 Expanded(
                   child: selected == null
-                      ? const Center(
-                          child: Text('Select a timetable to view the grid'))
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.touch_app_outlined,
+                                  size: 56, color: cs.outline),
+                              const SizedBox(height: 12),
+                              Text('Select a run to view the timetable',
+                                  style: TextStyle(color: cs.outline)),
+                            ],
+                          ),
+                        )
                       : _TimetableGrid(
                           entries: ctrl.entries,
                           timeSlots: _timeSlots,
-                          timetable: selected,
+                          run: selected,
                           canManage: canManage,
                         ),
                 ),
@@ -193,15 +342,50 @@ class _TimetableScreenState extends State<TimetableScreen> {
       );
     });
   }
+}
 
-  Color _statusColor(BuildContext context, String status) {
+class _RunCard extends StatelessWidget {
+  final TimetableRun run;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _RunCard({required this.run, required this.isSelected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return switch (status) {
-      'published' => Colors.green,
-      'approved' => cs.primary,
-      'under_review' => cs.secondary,
-      _ => cs.outline,
-    };
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+      color: isSelected ? cs.primaryContainer : null,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(run.name,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: isSelected ? cs.onPrimaryContainer : cs.onSurface,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 6),
+              _StatusBadge(run.status),
+              const SizedBox(height: 4),
+              Text(
+                '${run.facultyIds.length} facult${run.facultyIds.length == 1 ? 'y' : 'ies'} · '
+                '${run.buildingIds.length} building${run.buildingIds.length == 1 ? '' : 's'}',
+                style: TextStyle(fontSize: 11, color: cs.outline),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -210,61 +394,60 @@ class _TimetableScreenState extends State<TimetableScreen> {
 class _TimetableGrid extends StatelessWidget {
   final List<TimetableEntry> entries;
   final List<TimeSlot> timeSlots;
-  final TimetableModel timetable;
+  final TimetableRun run;
   final bool canManage;
 
   const _TimetableGrid({
-    required this.entries,
-    required this.timeSlots,
-    required this.timetable,
-    required this.canManage,
+    required this.entries, required this.timeSlots,
+    required this.run, required this.canManage,
   });
 
-  static const _days = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'
-  ];
+  static const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     if (timeSlots.isEmpty) {
-      return const Center(child: Text('No time slots — select a timetable'));
+      return Center(
+        child: Text('No time slots for this semester',
+            style: TextStyle(color: cs.outline)),
+      );
     }
 
-    // Group time slots by day
     final byDay = <String, List<TimeSlot>>{};
     for (final day in _days) {
-      byDay[day] =
-          timeSlots.where((ts) => ts.dayOfWeek == day).toList()
-            ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      byDay[day] = timeSlots.where((ts) => ts.dayOfWeek == day).toList()
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
     }
 
-    // Index entries by time_slot_id
     final entryBySlot = <int, TimetableEntry>{};
-    for (final e in entries) {
-      entryBySlot[e.timeSlotId] = e;
-    }
+    for (final e in entries) entryBySlot[e.timeSlotId] = e;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Timetable header
+          // Run header
           Row(
             children: [
-              Text(
-                'Timetable #${timetable.id}',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold),
+              Expanded(
+                child: Text(run.name,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold)),
               ),
               const SizedBox(width: 12),
-              _StatusChip(timetable.status),
+              _StatusBadge(run.status),
             ],
           ),
+          const SizedBox(height: 4),
+          Text(
+            '${entries.length} session${entries.length == 1 ? '' : 's'} scheduled',
+            style: TextStyle(fontSize: 12, color: cs.outline),
+          ),
           const SizedBox(height: 16),
-          // Weekly grid
+          // Grid
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -272,31 +455,29 @@ class _TimetableGrid extends StatelessWidget {
               children: _days.map((day) {
                 final slots = byDay[day] ?? [];
                 return SizedBox(
-                  width: 160,
+                  width: 164,
                   child: Column(
                     children: [
-                      // Day header
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 8, horizontal: 4),
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primaryContainer,
-                        child: Text(
-                          day,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer,
+                          borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(10)),
                         ),
+                        child: Text(day,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                              color: cs.onPrimaryContainer,
+                            )),
                       ),
-                      // Slot cells
-                      ...slots.map((ts) {
-                        final entry = entryBySlot[ts.id];
-                        return _SlotCell(
-                          timeSlot: ts,
-                          entry: entry,
-                        );
-                      }),
+                      ...slots.map((ts) => _SlotCell(
+                            timeSlot: ts,
+                            entry: entryBySlot[ts.id],
+                          )),
                     ],
                   ),
                 );
@@ -312,7 +493,6 @@ class _TimetableGrid extends StatelessWidget {
 class _SlotCell extends StatelessWidget {
   final TimeSlot timeSlot;
   final TimetableEntry? entry;
-
   const _SlotCell({required this.timeSlot, this.entry});
 
   @override
@@ -321,53 +501,35 @@ class _SlotCell extends StatelessWidget {
     final hasEntry = entry != null;
 
     return Container(
-      width: 160,
-      constraints: const BoxConstraints(minHeight: 72),
-      margin: const EdgeInsets.all(2),
+      width: 164,
+      constraints: const BoxConstraints(minHeight: 70),
+      margin: const EdgeInsets.fromLTRB(2, 0, 2, 2),
       decoration: BoxDecoration(
         color: hasEntry
-            ? (entry!.isOvercapacity
-                ? cs.errorContainer
-                : cs.secondaryContainer)
+            ? (entry!.isOvercapacity ? cs.errorContainer : cs.secondaryContainer)
             : cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: hasEntry ? cs.secondary.withAlpha(100) : cs.outlineVariant,
+          color: hasEntry ? cs.secondary.withAlpha(80) : cs.outlineVariant,
+          width: 0.8,
         ),
       ),
-      padding: const EdgeInsets.all(6),
+      padding: const EdgeInsets.all(8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            timeSlot.label,
-            style: Theme.of(context)
-                .textTheme
-                .labelSmall
-                ?.copyWith(color: cs.outline),
-          ),
+          Text(timeSlot.label,
+              style: TextStyle(fontSize: 10, color: cs.outline)),
           if (hasEntry) ...[
             const SizedBox(height: 4),
-            Text(
-              'Course #${entry!.courseId}',
-              style: const TextStyle(
-                  fontWeight: FontWeight.w600, fontSize: 12),
-            ),
-            Text(
-              'Room #${entry!.roomId}',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: cs.outline),
-            ),
+            Text('Course #${entry!.courseId}',
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+            Text('Room #${entry!.roomId}',
+                style: TextStyle(fontSize: 11, color: cs.outline)),
             if (entry!.isOvercapacity)
-              Text(
-                'Overcapacity',
-                style: TextStyle(
-                    color: cs.error,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold),
-              ),
+              Text('Overcapacity',
+                  style: TextStyle(
+                      color: cs.error, fontSize: 10, fontWeight: FontWeight.bold)),
           ],
         ],
       ),
@@ -375,29 +537,27 @@ class _SlotCell extends StatelessWidget {
   }
 }
 
-class _StatusChip extends StatelessWidget {
+class _StatusBadge extends StatelessWidget {
   final String status;
-  const _StatusChip(this.status);
+  const _StatusBadge(this.status);
 
   @override
   Widget build(BuildContext context) {
-    final color = switch (status) {
-      'published' => Colors.green,
-      'approved' => Theme.of(context).colorScheme.primary,
-      'under_review' => Theme.of(context).colorScheme.secondary,
-      _ => Theme.of(context).colorScheme.outline,
+    final (bg, fg) = switch (status) {
+      'published' => (Colors.green.shade100, Colors.green.shade800),
+      'approved' => (Colors.blue.shade100, Colors.blue.shade800),
+      'under_review' => (Colors.orange.shade100, Colors.orange.shade800),
+      _ => (Colors.grey.shade100, Colors.grey.shade700),
     };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withAlpha(30),
+        color: bg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withAlpha(100)),
       ),
       child: Text(
         status.replaceAll('_', ' '),
-        style: TextStyle(
-            color: color, fontSize: 11, fontWeight: FontWeight.w600),
+        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w600),
       ),
     );
   }

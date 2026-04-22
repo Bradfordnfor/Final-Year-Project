@@ -53,7 +53,7 @@ void main() {
   group('TimetableEntry', () {
     test('parses from JSON correctly', () {
       final json = {
-        'id': 10, 'timetable_id': 1, 'course_id': 2, 'lecturer_id': 3,
+        'id': 10, 'run_id': 1, 'course_id': 2, 'lecturer_id': 3,
         'room_id': 4, 'time_slot_id': 5, 'group_id': null,
         'week_pattern': 'every_week', 'rotation_sequence': null,
         'is_overcapacity': false, 'is_merged': false,

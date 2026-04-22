@@ -8,7 +8,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 from app.database import get_db
-from app.models.timetable import Timetable, TimetableEntry
+from app.models.timetable import TimetableRun, TimetableEntry
 from app.models.academic import TimeSlot, Class
 from app.models.course import Course
 from app.models.room import Room
@@ -18,8 +18,8 @@ from app.core.permissions import get_current_user
 router = APIRouter(prefix="/export", tags=["Export"])
 
 
-def _get_entries_with_details(timetable_id: int, db: Session) -> list[dict]:
-    entries = db.query(TimetableEntry).filter(TimetableEntry.timetable_id == timetable_id).all()
+def _get_entries_with_details(run_id: int, db: Session) -> list[dict]:
+    entries = db.query(TimetableEntry).filter(TimetableEntry.run_id == run_id).all()
     rows = []
     for entry in entries:
         timeslot = db.get(TimeSlot, entry.time_slot_id)
@@ -46,17 +46,17 @@ def _get_entries_with_details(timetable_id: int, db: Session) -> list[dict]:
     return sorted(rows, key=lambda r: (r["Day"], r["Time"]))
 
 
-@router.get("/timetables/{timetable_id}/csv")
+@router.get("/runs/{run_id}/csv")
 def export_csv(
-    timetable_id: int,
+    run_id: int,
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    tt = db.get(Timetable, timetable_id)
-    if not tt:
-        raise HTTPException(status_code=404, detail="Timetable not found")
+    run = db.get(TimetableRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Timetable run not found")
 
-    rows = _get_entries_with_details(timetable_id, db)
+    rows = _get_entries_with_details(run_id, db)
     if not rows:
         raise HTTPException(status_code=404, detail="No entries to export")
 
@@ -69,21 +69,21 @@ def export_csv(
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=timetable_{timetable_id}.csv"},
+        headers={"Content-Disposition": f"attachment; filename=timetable_run_{run_id}.csv"},
     )
 
 
-@router.get("/timetables/{timetable_id}/pdf")
+@router.get("/runs/{run_id}/pdf")
 def export_pdf(
-    timetable_id: int,
+    run_id: int,
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    tt = db.get(Timetable, timetable_id)
-    if not tt:
-        raise HTTPException(status_code=404, detail="Timetable not found")
+    run = db.get(TimetableRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Timetable run not found")
 
-    rows = _get_entries_with_details(timetable_id, db)
+    rows = _get_entries_with_details(run_id, db)
     if not rows:
         raise HTTPException(status_code=404, detail="No entries to export")
 
@@ -106,7 +106,7 @@ def export_pdf(
     ]))
 
     doc.build([
-        Paragraph(f"Timetable #{timetable_id}", styles["Title"]),
+        Paragraph(f"Timetable Run — {run.name}", styles["Title"]),
         table,
     ])
     buffer.seek(0)
@@ -114,5 +114,5 @@ def export_pdf(
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=timetable_{timetable_id}.pdf"},
+        headers={"Content-Disposition": f"attachment; filename=timetable_run_{run_id}.pdf"},
     )

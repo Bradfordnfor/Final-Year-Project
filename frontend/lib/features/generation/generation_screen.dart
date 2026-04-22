@@ -18,7 +18,7 @@ class _GenerationScreenState extends State<GenerationScreen> {
   Future<void> _trigger() async {
     final id = _ctrl.selected.value?.id;
     if (id == null) {
-      Get.snackbar('No Timetable', 'Select a timetable first from the Timetable screen.');
+      Get.snackbar('No Run Selected', 'Select a timetable run first from the Timetable screen.');
       return;
     }
     try {
@@ -43,10 +43,9 @@ class _GenerationScreenState extends State<GenerationScreen> {
             children: [
               Icon(Icons.calendar_month_outlined, size: 64, color: Colors.grey),
               SizedBox(height: 16),
-              Text('No timetable selected.',
-                  style: TextStyle(color: Colors.grey)),
+              Text('No run selected.', style: TextStyle(color: Colors.grey)),
               SizedBox(height: 8),
-              Text('Go to the Timetable screen and select one.',
+              Text('Go to the Timetable screen and select a run.',
                   style: TextStyle(color: Colors.grey, fontSize: 12)),
             ],
           ),
@@ -69,7 +68,7 @@ class _GenerationScreenState extends State<GenerationScreen> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Timetable #${timetable.id}',
+                        Text(timetable.name,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium

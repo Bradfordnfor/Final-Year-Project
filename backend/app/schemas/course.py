@@ -6,6 +6,7 @@ class CourseCreate(BaseModel):
     code: str
     name: str
     room_type_required: str = "lecture_hall"
+    level_id: int
     department_id: int
     lecturer_id: Optional[int] = None
 
@@ -22,6 +23,7 @@ class CourseOut(BaseModel):
     code: str
     name: str
     room_type_required: str
+    level_id: int
     department_id: int
     lecturer_id: Optional[int]
 

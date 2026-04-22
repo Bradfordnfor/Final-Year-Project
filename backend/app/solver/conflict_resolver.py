@@ -9,7 +9,7 @@ def apply_resolution(conflict: TimetableConflict, resolution: str, db: Session) 
 
     if resolution == "rotate_groups":
         entries = db.query(TimetableEntry).filter(
-            TimetableEntry.timetable_id == conflict.timetable_id,
+            TimetableEntry.run_id == conflict.run_id,
             TimetableEntry.course_id == conflict.course_id,
         ).all()
         group_names = [chr(65 + i) for i in range(len(entries))]
@@ -20,22 +20,21 @@ def apply_resolution(conflict: TimetableConflict, resolution: str, db: Session) 
         db.commit()
 
     elif resolution == "add_session":
-        from app.models.timetable import Timetable
+        from app.models.timetable import TimetableRun, TimetableRunBuilding
         from app.models.academic import TimeSlot, Class
         from app.models.course import Course
-        from app.models.building import Building
         from app.models.room import Room
 
         course = db.query(Course).filter(Course.id == conflict.course_id).first()
         if not course or not course.lecturer_id:
             return
 
-        timetable = db.query(Timetable).filter(Timetable.id == conflict.timetable_id).first()
-        all_slots = db.query(TimeSlot).filter(TimeSlot.semester_id == timetable.semester_id).all()
+        run = db.get(TimetableRun, conflict.run_id)
+        all_slots = db.query(TimeSlot).filter(TimeSlot.semester_id == run.semester_id).all()
 
         used_by_lecturer = {
             e.time_slot_id for e in db.query(TimetableEntry).filter(
-                TimetableEntry.timetable_id == conflict.timetable_id,
+                TimetableEntry.run_id == conflict.run_id,
                 TimetableEntry.lecturer_id == course.lecturer_id,
             ).all()
         }
@@ -46,7 +45,7 @@ def apply_resolution(conflict: TimetableConflict, resolution: str, db: Session) 
                 db.query(TimetableEntry)
                 .join(TimetableEntryClass, TimetableEntryClass.entry_id == TimetableEntry.id)
                 .filter(
-                    TimetableEntry.timetable_id == conflict.timetable_id,
+                    TimetableEntry.run_id == conflict.run_id,
                     TimetableEntryClass.class_id == conflict.class_id,
                 ).all()
             }
@@ -56,16 +55,10 @@ def apply_resolution(conflict: TimetableConflict, resolution: str, db: Session) 
         if not free_slot:
             return
 
-        from app.models.university import Faculty, Department
-        dept = db.query(Department).filter(Department.id == timetable.department_id).first()
-        uni_id = dept.faculty.university_id if dept and dept.faculty else None
-        if not uni_id:
-            return
-
+        building_ids = [rb.building_id for rb in run.buildings]
         lab = (
             db.query(Room)
-            .join(Building, Building.id == Room.building_id)
-            .filter(Building.university_id == uni_id, Room.room_type == "lab")
+            .filter(Room.building_id.in_(building_ids), Room.room_type == "lab")
             .order_by(Room.capacity.desc())
             .first()
         )
@@ -84,7 +77,7 @@ def apply_resolution(conflict: TimetableConflict, resolution: str, db: Session) 
 
         for _ in range(extra_groups):
             new_entry = TimetableEntry(
-                timetable_id=conflict.timetable_id,
+                run_id=conflict.run_id,
                 course_id=conflict.course_id,
                 lecturer_id=course.lecturer_id,
                 room_id=lab.id,

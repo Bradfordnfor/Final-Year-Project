@@ -1,16 +1,16 @@
 from sqlalchemy.orm import Session
 from app.solver.models import SolverResult
-from app.models.timetable import Timetable, TimetableEntry, TimetableEntryClass
+from app.models.timetable import TimetableRun, TimetableEntry, TimetableEntryClass
 
 
 def save_solver_result(
-    timetable: Timetable,
+    run: TimetableRun,
     result: SolverResult,
     db: Session,
 ) -> None:
     for assignment in result.assignments:
         entry = TimetableEntry(
-            timetable_id=timetable.id,
+            run_id=run.id,
             course_id=assignment.session.course_id,
             lecturer_id=assignment.session.lecturer_id,
             room_id=assignment.room_id,

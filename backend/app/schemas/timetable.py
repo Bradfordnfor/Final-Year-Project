@@ -3,25 +3,30 @@ from typing import Optional
 from pydantic import BaseModel
 
 
-class TimetableCreate(BaseModel):
+class RunCreate(BaseModel):
+    name: str
     semester_id: int
-    department_id: int
+    faculty_ids: list[int]
+    building_ids: list[int]
 
 
-class TimetableResponse(BaseModel):
+class RunResponse(BaseModel):
     id: int
+    name: str
     status: str
     semester_id: int
-    department_id: int
+    created_by: int
     generated_at: Optional[datetime]
     created_at: datetime
+    faculty_ids: list[int] = []
+    building_ids: list[int] = []
 
     model_config = {"from_attributes": True}
 
 
 class TimetableEntryResponse(BaseModel):
     id: int
-    timetable_id: int
+    run_id: int
     course_id: int
     lecturer_id: int
     room_id: int
@@ -38,7 +43,7 @@ class TimetableEntryResponse(BaseModel):
 
 class TimetableConflictResponse(BaseModel):
     id: int
-    timetable_id: int
+    run_id: int
     conflict_type: str
     course_id: Optional[int]
     class_id: Optional[int]

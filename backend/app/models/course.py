@@ -13,9 +13,11 @@ class Course(Base):
     name: Mapped[str] = mapped_column(String(200))
     room_type_required: Mapped[str] = mapped_column(String(20), default="lecture_hall")
     # lecture_hall | lab | studio
+    level_id: Mapped[int] = mapped_column(ForeignKey("levels.id"))
     department_id: Mapped[int] = mapped_column(ForeignKey("departments.id"))
     lecturer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("lecturers.id"), nullable=True)
 
+    level: Mapped["Level"] = relationship()
     department: Mapped["Department"] = relationship(back_populates="courses")
     lecturer: Mapped[Optional["Lecturer"]] = relationship()
     shared_with: Mapped[list["SharedCourse"]] = relationship(

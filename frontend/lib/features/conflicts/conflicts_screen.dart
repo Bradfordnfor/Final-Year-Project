@@ -59,7 +59,7 @@ class _ConflictsScreenState extends State<ConflictsScreen> {
         itemCount: _ctrl.conflicts.length,
         itemBuilder: (_, i) => _ConflictCard(
           conflict: _ctrl.conflicts[i],
-          timetableId: _ctrl.selected.value!.id,
+          runId: _ctrl.selected.value!.id,
         )
             .animate(delay: Duration(milliseconds: i * 50))
             .fadeIn(duration: 250.ms)
@@ -71,8 +71,8 @@ class _ConflictsScreenState extends State<ConflictsScreen> {
 
 class _ConflictCard extends StatelessWidget {
   final TimetableConflict conflict;
-  final int timetableId;
-  const _ConflictCard({required this.conflict, required this.timetableId});
+  final int runId;
+  const _ConflictCard({required this.conflict, required this.runId});
 
   Map<String, dynamic> _parseDetails(String details) {
     try {
@@ -85,7 +85,7 @@ class _ConflictCard extends StatelessWidget {
   Future<void> _resolve(BuildContext context, String resolution) async {
     try {
       await TimetableController.to
-          .resolveConflict(timetableId, conflict.id, resolution);
+          .resolveConflict(runId, conflict.id, resolution);
       Get.snackbar(
         'Resolved',
         'Conflict resolved with: ${resolution.replaceAll('_', ' ')}',

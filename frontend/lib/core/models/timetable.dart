@@ -1,23 +1,31 @@
-class TimetableModel {
+class TimetableRun {
   final int id;
+  final String name;
   final String status;
   final int semesterId;
-  final int departmentId;
+  final int createdBy;
   final String? generatedAt;
   final String createdAt;
+  final List<int> facultyIds;
+  final List<int> buildingIds;
 
-  const TimetableModel({
-    required this.id, required this.status, required this.semesterId,
-    required this.departmentId, this.generatedAt, required this.createdAt,
+  const TimetableRun({
+    required this.id, required this.name, required this.status,
+    required this.semesterId, required this.createdBy,
+    this.generatedAt, required this.createdAt,
+    required this.facultyIds, required this.buildingIds,
   });
 
-  factory TimetableModel.fromJson(Map<String, dynamic> json) => TimetableModel(
+  factory TimetableRun.fromJson(Map<String, dynamic> json) => TimetableRun(
         id: json['id'] as int,
+        name: json['name'] as String,
         status: json['status'] as String,
         semesterId: json['semester_id'] as int,
-        departmentId: json['department_id'] as int,
+        createdBy: json['created_by'] as int,
         generatedAt: json['generated_at'] as String?,
         createdAt: json['created_at'] as String,
+        facultyIds: List<int>.from(json['faculty_ids'] as List? ?? []),
+        buildingIds: List<int>.from(json['building_ids'] as List? ?? []),
       );
 
   bool get isPublished => status == 'published';
@@ -26,7 +34,7 @@ class TimetableModel {
 
 class TimetableEntry {
   final int id;
-  final int timetableId;
+  final int runId;
   final int courseId;
   final int lecturerId;
   final int roomId;
@@ -39,7 +47,7 @@ class TimetableEntry {
   final List<int> classIds;
 
   const TimetableEntry({
-    required this.id, required this.timetableId, required this.courseId,
+    required this.id, required this.runId, required this.courseId,
     required this.lecturerId, required this.roomId, required this.timeSlotId,
     this.groupId, required this.weekPattern, this.rotationSequence,
     required this.isOvercapacity, required this.isMerged, required this.classIds,
@@ -47,7 +55,7 @@ class TimetableEntry {
 
   factory TimetableEntry.fromJson(Map<String, dynamic> json) => TimetableEntry(
         id: json['id'] as int,
-        timetableId: json['timetable_id'] as int,
+        runId: json['run_id'] as int,
         courseId: json['course_id'] as int,
         lecturerId: json['lecturer_id'] as int,
         roomId: json['room_id'] as int,
@@ -57,13 +65,13 @@ class TimetableEntry {
         rotationSequence: json['rotation_sequence'] as String?,
         isOvercapacity: json['is_overcapacity'] as bool,
         isMerged: json['is_merged'] as bool,
-        classIds: List<int>.from(json['class_ids'] as List),
+        classIds: List<int>.from(json['class_ids'] as List? ?? []),
       );
 }
 
 class TimetableConflict {
   final int id;
-  final int timetableId;
+  final int runId;
   final String conflictType;
   final int? courseId;
   final int? classId;
@@ -72,14 +80,14 @@ class TimetableConflict {
   final String? resolution;
 
   const TimetableConflict({
-    required this.id, required this.timetableId, required this.conflictType,
+    required this.id, required this.runId, required this.conflictType,
     this.courseId, this.classId, required this.details,
     required this.resolved, this.resolution,
   });
 
   factory TimetableConflict.fromJson(Map<String, dynamic> json) => TimetableConflict(
         id: json['id'] as int,
-        timetableId: json['timetable_id'] as int,
+        runId: json['run_id'] as int,
         conflictType: json['conflict_type'] as String,
         courseId: json['course_id'] as int?,
         classId: json['class_id'] as int?,

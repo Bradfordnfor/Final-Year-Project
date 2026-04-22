@@ -10,17 +10,14 @@ from app.solver.preprocessor import compute_merge_decision, compute_lab_split
 
 
 def build_solver_input(
-    timetable_id: int,
+    run_id: int,
     semester_id: int,
-    department_id: int,
+    faculty_ids: list[int],
+    building_ids: list[int],
     db: Session,
 ) -> tuple[SolverInput, list[ConflictFlag]]:
-    faculty = (
-        db.query(Faculty)
-        .join(Department, Department.faculty_id == Faculty.id)
-        .filter(Department.id == department_id)
-        .first()
-    )
+    # Derive sessions_per_week and overflow_threshold from first faculty
+    faculty = db.query(Faculty).filter(Faculty.id.in_(faculty_ids)).first()
     sessions_per_week = faculty.sessions_per_week if faculty else 2
     overflow_threshold = faculty.university.overflow_threshold if faculty else 0.20
 
@@ -32,14 +29,11 @@ def build_solver_input(
         for ts in raw_slots
     ]
 
-    # Rooms via buildings (university-wide)
-    uni_id = faculty.university_id if faculty else None
+    # Rooms from selected buildings only
     raw_rooms = (
         db.query(Room)
-        .join(Building, Building.id == Room.building_id)
-        .filter(Building.university_id == uni_id, Room.is_active == True)  # noqa: E712
+        .filter(Room.building_id.in_(building_ids), Room.is_active == True)  # noqa: E712
         .all()
-        if uni_id else []
     )
     rooms = [
         {"id": r.id, "capacity": r.capacity, "room_type": r.room_type}
@@ -47,11 +41,10 @@ def build_solver_input(
     ]
     labs = [r for r in rooms if r["room_type"] == "lab"]
 
-    # Lecturer unavailability — LecturerAvailability stores blocked time_slot_ids
+    # Lecturer unavailability
     unavailability: dict[int, list[int]] = {}
     avail_records = (
         db.query(LecturerAvailability)
-        .join(Lecturer, Lecturer.id == LecturerAvailability.lecturer_id)
         .join(TimeSlot, TimeSlot.id == LecturerAvailability.time_slot_id)
         .filter(TimeSlot.semester_id == semester_id)
         .all()
@@ -59,8 +52,14 @@ def build_solver_input(
     for rec in avail_records:
         unavailability.setdefault(rec.lecturer_id, []).append(rec.time_slot_id)
 
-    # Courses for this department
-    courses = db.query(Course).filter(Course.department_id == department_id).all()
+    # Get all departments across selected faculties
+    dept_ids = [
+        d.id for d in
+        db.query(Department).filter(Department.faculty_id.in_(faculty_ids)).all()
+    ]
+
+    # Courses for all departments in the selected faculties
+    courses = db.query(Course).filter(Course.department_id.in_(dept_ids)).all()
 
     all_sessions = []
     all_conflicts: list[ConflictFlag] = []
@@ -72,13 +71,13 @@ def build_solver_input(
         shared_entries = db.query(SharedCourse).filter(SharedCourse.course_id == course.id).all()
         shared_class_ids = [s.class_id for s in shared_entries]
 
-        dept_classes = (
+        # Classes at this course's level
+        level_classes = (
             db.query(Class)
-            .join(Level, Level.id == Class.level_id)
-            .filter(Level.department_id == department_id)
+            .filter(Class.level_id == course.level_id)
             .all()
         )
-        own_class_ids = [c.id for c in dept_classes]
+        own_class_ids = [c.id for c in level_classes]
         attending_class_ids = list(set(own_class_ids + shared_class_ids))
         attending_classes = db.query(Class).filter(Class.id.in_(attending_class_ids)).all()
 

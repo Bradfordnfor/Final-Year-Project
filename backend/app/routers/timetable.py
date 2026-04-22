@@ -4,12 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.timetable import (
-    Timetable, TimetableEntry, TimetableEntryClass,
+    TimetableRun, TimetableRunFaculty, TimetableRunBuilding,
+    TimetableEntry, TimetableEntryClass,
     TimetableConflict, GenerationJob, Notification,
 )
 from app.models.user import User
 from app.schemas.timetable import (
-    TimetableCreate, TimetableResponse, TimetableEntryResponse,
+    RunCreate, RunResponse, TimetableEntryResponse,
     TimetableConflictResponse, ConflictResolutionRequest,
     GenerationJobResponse, ManualSlotMoveRequest, NotificationResponse,
 )
@@ -18,45 +19,90 @@ from app.core.permissions import (
     require_faculty_head, require_timetable_officer,
 )
 
-router = APIRouter(prefix="/timetables", tags=["Timetables"])
+router = APIRouter(tags=["Timetable Runs"])
 
 STATUS_FLOW = ["draft", "under_review", "approved", "published"]
 
 
-@router.post("/", response_model=TimetableResponse, status_code=status.HTTP_201_CREATED)
-def create_timetable(
-    data: TimetableCreate,
+def _run_to_response(run: TimetableRun) -> RunResponse:
+    return RunResponse(
+        id=run.id,
+        name=run.name,
+        status=run.status,
+        semester_id=run.semester_id,
+        created_by=run.created_by,
+        generated_at=run.generated_at,
+        created_at=run.created_at,
+        faculty_ids=[rf.faculty_id for rf in run.faculties],
+        building_ids=[rb.building_id for rb in run.buildings],
+    )
+
+
+@router.post("/runs/", response_model=RunResponse, status_code=status.HTTP_201_CREATED)
+def create_run(
+    data: RunCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_timetable_officer),
+):
+    run = TimetableRun(
+        name=data.name,
+        semester_id=data.semester_id,
+        created_by=current_user.id,
+    )
+    db.add(run)
+    db.flush()
+
+    for fid in data.faculty_ids:
+        db.add(TimetableRunFaculty(run_id=run.id, faculty_id=fid))
+    for bid in data.building_ids:
+        db.add(TimetableRunBuilding(run_id=run.id, building_id=bid))
+
+    db.commit()
+    db.refresh(run)
+    return _run_to_response(run)
+
+
+@router.get("/runs/", response_model=list[RunResponse])
+def list_runs(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    runs = db.query(TimetableRun).all()
+    return [_run_to_response(r) for r in runs]
+
+
+@router.get("/runs/public", response_model=list[RunResponse])
+def list_published_runs(db: Session = Depends(get_db)):
+    runs = db.query(TimetableRun).filter(TimetableRun.status == "published").all()
+    return [_run_to_response(r) for r in runs]
+
+
+@router.get("/runs/{run_id}", response_model=RunResponse)
+def get_run(run_id: int, db: Session = Depends(get_db)):
+    run = db.get(TimetableRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Timetable run not found")
+    return _run_to_response(run)
+
+
+@router.delete("/runs/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_run(
+    run_id: int,
     db: Session = Depends(get_db),
     _: User = Depends(require_timetable_officer),
 ):
-    timetable = Timetable(**data.model_dump())
-    db.add(timetable)
+    run = db.get(TimetableRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Timetable run not found")
+    db.delete(run)
     db.commit()
-    db.refresh(timetable)
-    return timetable
 
 
-@router.get("/", response_model=list[TimetableResponse])
-def list_timetables(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    return db.query(Timetable).all()
-
-
-@router.get("/{timetable_id}", response_model=TimetableResponse)
-def get_timetable(timetable_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    tt = db.get(Timetable, timetable_id)
-    if not tt:
-        raise HTTPException(status_code=404, detail="Timetable not found")
-    return tt
-
-
-@router.get("/{timetable_id}/entries", response_model=list[TimetableEntryResponse])
-def get_entries(timetable_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    entries = db.query(TimetableEntry).filter(TimetableEntry.timetable_id == timetable_id).all()
+@router.get("/runs/{run_id}/entries", response_model=list[TimetableEntryResponse])
+def get_entries(run_id: int, db: Session = Depends(get_db)):
+    entries = db.query(TimetableEntry).filter(TimetableEntry.run_id == run_id).all()
     result = []
     for entry in entries:
         class_ids = [ec.class_id for ec in entry.entry_classes]
         result.append(TimetableEntryResponse(
-            id=entry.id, timetable_id=entry.timetable_id,
+            id=entry.id, run_id=entry.run_id,
             course_id=entry.course_id, lecturer_id=entry.lecturer_id,
             room_id=entry.room_id, time_slot_id=entry.time_slot_id,
             group_id=entry.group_id, week_pattern=entry.week_pattern,
@@ -67,55 +113,55 @@ def get_entries(timetable_id: int, db: Session = Depends(get_db), _: User = Depe
     return result
 
 
-@router.get("/{timetable_id}/conflicts", response_model=list[TimetableConflictResponse])
-def get_conflicts(timetable_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+@router.get("/runs/{run_id}/conflicts", response_model=list[TimetableConflictResponse])
+def get_conflicts(run_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     return db.query(TimetableConflict).filter(
-        TimetableConflict.timetable_id == timetable_id,
+        TimetableConflict.run_id == run_id,
         TimetableConflict.resolved == False,  # noqa: E712
     ).all()
 
 
-@router.post("/{timetable_id}/advance-status", response_model=TimetableResponse)
+@router.post("/runs/{run_id}/advance-status", response_model=RunResponse)
 def advance_status(
-    timetable_id: int,
+    run_id: int,
     db: Session = Depends(get_db),
     _: User = Depends(require_timetable_officer),
 ):
-    tt = db.get(Timetable, timetable_id)
-    if not tt:
-        raise HTTPException(status_code=404, detail="Timetable not found")
-    current_idx = STATUS_FLOW.index(tt.status) if tt.status in STATUS_FLOW else -1
+    run = db.get(TimetableRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Timetable run not found")
+    current_idx = STATUS_FLOW.index(run.status) if run.status in STATUS_FLOW else -1
     if current_idx >= len(STATUS_FLOW) - 1:
-        raise HTTPException(status_code=400, detail="Timetable is already published")
-    tt.status = STATUS_FLOW[current_idx + 1]
+        raise HTTPException(status_code=400, detail="Timetable run is already published")
+    run.status = STATUS_FLOW[current_idx + 1]
     db.commit()
-    db.refresh(tt)
-    return tt
+    db.refresh(run)
+    return _run_to_response(run)
 
 
-@router.post("/{timetable_id}/publish", response_model=TimetableResponse)
-def publish_timetable(
-    timetable_id: int,
+@router.post("/runs/{run_id}/publish", response_model=RunResponse)
+def publish_run(
+    run_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_faculty_head),
+    current_user: User = Depends(require_faculty_head),
 ):
-    tt = db.get(Timetable, timetable_id)
-    if not tt:
-        raise HTTPException(status_code=404, detail="Timetable not found")
-    if tt.status != "approved":
+    run = db.get(TimetableRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Timetable run not found")
+    if run.status != "approved":
         raise HTTPException(status_code=400, detail="Timetable must be approved before publishing")
-    tt.status = "published"
+    run.status = "published"
     db.commit()
-    db.refresh(tt)
-    _notify_department(tt, db)
-    return tt
+    db.refresh(run)
+    _notify_run_published(run, db)
+    return _run_to_response(run)
 
 
-@router.get("/{timetable_id}/job-status", response_model=GenerationJobResponse)
-def get_job_status(timetable_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+@router.get("/runs/{run_id}/job-status", response_model=GenerationJobResponse)
+def get_job_status(run_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     job = (
         db.query(GenerationJob)
-        .filter(GenerationJob.timetable_id == timetable_id)
+        .filter(GenerationJob.run_id == run_id)
         .order_by(GenerationJob.id.desc())
         .first()
     )
@@ -124,31 +170,31 @@ def get_job_status(timetable_id: int, db: Session = Depends(get_db), _: User = D
     return job
 
 
-@router.post("/{timetable_id}/generate")
+@router.post("/runs/{run_id}/generate")
 def trigger_generation(
-    timetable_id: int,
+    run_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: User = Depends(require_timetable_officer),
 ):
-    tt = db.get(Timetable, timetable_id)
-    if not tt:
-        raise HTTPException(status_code=404, detail="Timetable not found")
-    if tt.status != "draft":
-        raise HTTPException(status_code=400, detail="Can only generate for a draft timetable")
+    run = db.get(TimetableRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Timetable run not found")
+    if run.status != "draft":
+        raise HTTPException(status_code=400, detail="Can only generate for a draft run")
 
-    job = GenerationJob(timetable_id=timetable_id, status="pending")
+    job = GenerationJob(run_id=run_id, status="pending")
     db.add(job)
     db.commit()
     db.refresh(job)
 
-    background_tasks.add_task(_run_generation, timetable_id, job.id)
+    background_tasks.add_task(_run_generation, run_id, job.id)
     return {"message": "Generation started", "job_id": job.id}
 
 
-@router.post("/{timetable_id}/conflicts/{conflict_id}/resolve", response_model=TimetableConflictResponse)
+@router.post("/runs/{run_id}/conflicts/{conflict_id}/resolve", response_model=TimetableConflictResponse)
 def resolve_conflict(
-    timetable_id: int,
+    run_id: int,
     conflict_id: int,
     data: ConflictResolutionRequest,
     db: Session = Depends(get_db),
@@ -156,7 +202,7 @@ def resolve_conflict(
 ):
     conflict = db.query(TimetableConflict).filter(
         TimetableConflict.id == conflict_id,
-        TimetableConflict.timetable_id == timetable_id,
+        TimetableConflict.run_id == run_id,
     ).first()
     if not conflict:
         raise HTTPException(status_code=404, detail="Conflict not found")
@@ -173,16 +219,16 @@ def resolve_conflict(
     return conflict
 
 
-@router.put("/{timetable_id}/entries/move", response_model=TimetableEntryResponse)
+@router.put("/runs/{run_id}/entries/move", response_model=TimetableEntryResponse)
 def move_entry(
-    timetable_id: int,
+    run_id: int,
     data: ManualSlotMoveRequest,
     db: Session = Depends(get_db),
     _: User = Depends(require_faculty_head),
 ):
     entry = db.query(TimetableEntry).filter(
         TimetableEntry.id == data.entry_id,
-        TimetableEntry.timetable_id == timetable_id,
+        TimetableEntry.run_id == run_id,
     ).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -190,7 +236,7 @@ def move_entry(
     class_ids = [ec.class_id for ec in entry.entry_classes]
 
     lecturer_clash = db.query(TimetableEntry).filter(
-        TimetableEntry.timetable_id == timetable_id,
+        TimetableEntry.run_id == run_id,
         TimetableEntry.time_slot_id == data.new_time_slot_id,
         TimetableEntry.lecturer_id == entry.lecturer_id,
         TimetableEntry.id != entry.id,
@@ -203,7 +249,7 @@ def move_entry(
             db.query(TimetableEntryClass)
             .join(TimetableEntry, TimetableEntry.id == TimetableEntryClass.entry_id)
             .filter(
-                TimetableEntry.timetable_id == timetable_id,
+                TimetableEntry.run_id == run_id,
                 TimetableEntry.time_slot_id == data.new_time_slot_id,
                 TimetableEntryClass.class_id == class_id,
                 TimetableEntryClass.entry_id != entry.id,
@@ -218,7 +264,7 @@ def move_entry(
     db.refresh(entry)
 
     return TimetableEntryResponse(
-        id=entry.id, timetable_id=entry.timetable_id, course_id=entry.course_id,
+        id=entry.id, run_id=entry.run_id, course_id=entry.course_id,
         lecturer_id=entry.lecturer_id, room_id=entry.room_id, time_slot_id=entry.time_slot_id,
         group_id=entry.group_id, week_pattern=entry.week_pattern,
         rotation_sequence=entry.rotation_sequence, is_overcapacity=entry.is_overcapacity,
@@ -226,14 +272,14 @@ def move_entry(
     )
 
 
-@router.get("/{timetable_id}/analytics")
+@router.get("/runs/{run_id}/analytics")
 def get_analytics(
-    timetable_id: int,
+    run_id: int,
     db: Session = Depends(get_db),
     _: User = Depends(require_faculty_head),
 ):
     from collections import Counter
-    entries = db.query(TimetableEntry).filter(TimetableEntry.timetable_id == timetable_id).all()
+    entries = db.query(TimetableEntry).filter(TimetableEntry.run_id == run_id).all()
     room_usage = Counter(e.room_id for e in entries)
     lecturer_sessions = Counter(e.lecturer_id for e in entries)
     overcapacity_ids = [e.id for e in entries if e.is_overcapacity]
@@ -279,7 +325,7 @@ def mark_notification_read(
 
 # --- Internal helpers ---
 
-def _run_generation(timetable_id: int, job_id: int) -> None:
+def _run_generation(run_id: int, job_id: int) -> None:
     from app.database import SessionLocal
     from app.solver.db_preprocessor import build_solver_input
     from app.solver.solver import solve_timetable
@@ -288,22 +334,26 @@ def _run_generation(timetable_id: int, job_id: int) -> None:
     db = SessionLocal()
     try:
         job = db.get(GenerationJob, job_id)
-        timetable = db.get(Timetable, timetable_id)
+        run = db.get(TimetableRun, run_id)
 
         job.status = "running"
         job.started_at = datetime.utcnow()
         db.commit()
 
+        faculty_ids = [rf.faculty_id for rf in run.faculties]
+        building_ids = [rb.building_id for rb in run.buildings]
+
         solver_input, conflicts = build_solver_input(
-            timetable_id=timetable_id,
-            semester_id=timetable.semester_id,
-            department_id=timetable.department_id,
+            run_id=run_id,
+            semester_id=run.semester_id,
+            faculty_ids=faculty_ids,
+            building_ids=building_ids,
             db=db,
         )
 
         for c in conflicts:
             db.add(TimetableConflict(
-                timetable_id=timetable_id,
+                run_id=run_id,
                 conflict_type=c.conflict_type,
                 course_id=c.course_id,
                 class_id=c.class_id,
@@ -318,15 +368,15 @@ def _run_generation(timetable_id: int, job_id: int) -> None:
         if solver_input.sessions:
             result = solve_timetable(solver_input)
             if result.status in ("optimal", "feasible"):
-                save_solver_result(timetable, result, db)
-                timetable.generated_at = datetime.utcnow()
+                save_solver_result(run, result, db)
+                run.generated_at = datetime.utcnow()
                 job.status = "completed"
             else:
                 job.status = "failed"
                 job.error_message = f"Solver returned status: {result.status}"
         else:
             job.status = "completed"
-            timetable.generated_at = datetime.utcnow()
+            run.generated_at = datetime.utcnow()
 
         job.completed_at = datetime.utcnow()
         db.commit()
@@ -342,12 +392,20 @@ def _run_generation(timetable_id: int, job_id: int) -> None:
         db.close()
 
 
-def _notify_department(timetable: Timetable, db: Session) -> None:
-    users = db.query(User).filter(User.department_id == timetable.department_id).all()
+def _notify_run_published(run: TimetableRun, db: Session) -> None:
+    from app.models.university import Faculty, Department
+    from app.models.academic import Level, Class
+    from sqlalchemy import select
+
+    faculty_ids = [rf.faculty_id for rf in run.faculties]
+    dept_ids = [
+        d.id for d in db.query(Department).filter(Department.faculty_id.in_(faculty_ids)).all()
+    ]
+    users = db.query(User).filter(User.faculty_id.in_(faculty_ids)).all()
     for user in users:
         db.add(Notification(
             user_id=user.id,
-            message=f"Timetable for department {timetable.department_id} has been published.",
+            message=f"Timetable run '{run.name}' has been published.",
             notification_type="timetable_published",
         ))
     db.commit()

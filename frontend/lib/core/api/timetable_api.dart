@@ -5,89 +5,105 @@ class TimetableApi {
   final ApiClient _client;
   TimetableApi(this._client);
 
-  Future<List<TimetableModel>> getTimetables() async {
-    final response = await _client.get('/timetables/');
+  Future<List<TimetableRun>> getRuns() async {
+    final response = await _client.get('/runs/');
     return (response.data as List)
-        .map((e) => TimetableModel.fromJson(e as Map<String, dynamic>))
+        .map((e) => TimetableRun.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
-  Future<TimetableModel> getTimetable(int id) async {
-    final response = await _client.get('/timetables/$id');
-    return TimetableModel.fromJson(response.data as Map<String, dynamic>);
+  Future<List<TimetableRun>> getPublishedRuns() async {
+    final response = await _client.get('/runs/public');
+    return (response.data as List)
+        .map((e) => TimetableRun.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<TimetableModel> createTimetable(int semesterId, int departmentId) async {
-    final response = await _client.post('/timetables/', data: {
+  Future<TimetableRun> getRun(int id) async {
+    final response = await _client.get('/runs/$id');
+    return TimetableRun.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<TimetableRun> createRun({
+    required String name,
+    required int semesterId,
+    required List<int> facultyIds,
+    required List<int> buildingIds,
+  }) async {
+    final response = await _client.post('/runs/', data: {
+      'name': name,
       'semester_id': semesterId,
-      'department_id': departmentId,
+      'faculty_ids': facultyIds,
+      'building_ids': buildingIds,
     });
-    return TimetableModel.fromJson(response.data as Map<String, dynamic>);
+    return TimetableRun.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<List<TimetableEntry>> getEntries(int timetableId) async {
-    final response = await _client.get('/timetables/$timetableId/entries');
+  Future<void> deleteRun(int id) async {
+    await _client.delete('/runs/$id');
+  }
+
+  Future<List<TimetableEntry>> getEntries(int runId) async {
+    final response = await _client.get('/runs/$runId/entries');
     return (response.data as List)
         .map((e) => TimetableEntry.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
-  Future<List<TimetableConflict>> getConflicts(int timetableId) async {
-    final response = await _client.get('/timetables/$timetableId/conflicts');
+  Future<List<TimetableConflict>> getConflicts(int runId) async {
+    final response = await _client.get('/runs/$runId/conflicts');
     return (response.data as List)
         .map((e) => TimetableConflict.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
-  Future<Map<String, dynamic>> triggerGeneration(int timetableId) async {
-    final response = await _client.post('/timetables/$timetableId/generate');
+  Future<Map<String, dynamic>> triggerGeneration(int runId) async {
+    final response = await _client.post('/runs/$runId/generate');
     return response.data as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> getJobStatus(int timetableId) async {
-    final response = await _client.get('/timetables/$timetableId/job-status');
+  Future<Map<String, dynamic>> getJobStatus(int runId) async {
+    final response = await _client.get('/runs/$runId/job-status');
     return response.data as Map<String, dynamic>;
   }
 
-  Future<TimetableModel> advanceStatus(int timetableId) async {
-    final response = await _client.post('/timetables/$timetableId/advance-status');
-    return TimetableModel.fromJson(response.data as Map<String, dynamic>);
+  Future<TimetableRun> advanceStatus(int runId) async {
+    final response = await _client.post('/runs/$runId/advance-status');
+    return TimetableRun.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<TimetableModel> publish(int timetableId) async {
-    final response = await _client.post('/timetables/$timetableId/publish');
-    return TimetableModel.fromJson(response.data as Map<String, dynamic>);
+  Future<TimetableRun> publish(int runId) async {
+    final response = await _client.post('/runs/$runId/publish');
+    return TimetableRun.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<TimetableConflict> resolveConflict(
-      int timetableId, int conflictId, String resolution) async {
+      int runId, int conflictId, String resolution) async {
     final response = await _client.post(
-      '/timetables/$timetableId/conflicts/$conflictId/resolve',
+      '/runs/$runId/conflicts/$conflictId/resolve',
       data: {'resolution': resolution},
     );
     return TimetableConflict.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<Map<String, dynamic>> getAnalytics(int timetableId) async {
-    final response = await _client.get('/timetables/$timetableId/analytics');
+  Future<Map<String, dynamic>> getAnalytics(int runId) async {
+    final response = await _client.get('/runs/$runId/analytics');
     return response.data as Map<String, dynamic>;
   }
 
   Future<List<AppNotification>> getMyNotifications() async {
-    final response = await _client.get('/timetables/notifications/mine');
+    final response = await _client.get('/notifications/mine');
     return (response.data as List)
         .map((e) => AppNotification.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
   Future<void> markNotificationRead(int notificationId) async {
-    await _client.post('/timetables/notifications/$notificationId/read');
+    await _client.post('/notifications/$notificationId/read');
   }
 
-  Future<List<int>> downloadExport(int timetableId, String format) async {
-    final response = await _client.downloadFile(
-      '/export/timetables/$timetableId/$format',
-    );
+  Future<List<int>> downloadExport(int runId, String format) async {
+    final response = await _client.downloadFile('/export/runs/$runId/$format');
     return List<int>.from(response.data as List);
   }
 }

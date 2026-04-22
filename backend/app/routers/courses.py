@@ -25,8 +25,18 @@ def create_course(
 
 
 @router.get("/courses/", response_model=list[CourseOut])
-def list_courses(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return db.query(Course).all()
+def list_courses(
+    level_id: int | None = None,
+    department_id: int | None = None,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    q = db.query(Course)
+    if level_id is not None:
+        q = q.filter(Course.level_id == level_id)
+    if department_id is not None:
+        q = q.filter(Course.department_id == department_id)
+    return q.all()
 
 
 @router.get("/courses/{course_id}", response_model=CourseOut)

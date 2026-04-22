@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import csv
+import io
+import secrets
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User, Lecturer, LecturerAvailability, Student
@@ -18,8 +21,10 @@ router = APIRouter(tags=["Users"])
 def create_user(
     payload: UserCreate,
     db: Session = Depends(get_db),
-    _=Depends(require_super_admin),
+    current_user: User = Depends(get_current_user),
 ):
+    if current_user.role not in ("super_admin", "university_admin"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
     data = payload.model_dump()
@@ -142,3 +147,66 @@ def update_student(
     db.commit()
     db.refresh(obj)
     return obj
+
+
+@router.post("/users/bulk-import/")
+def bulk_import_lecturers(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    CSV columns: full_name, email, department_id, faculty_id, university_id
+    Creates a User (role=lecturer) and Lecturer profile for each row.
+    Returns created accounts with auto-generated passwords.
+    """
+    if current_user.role not in ("super_admin", "university_admin"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    content = file.file.read().decode("utf-8")
+    reader = csv.DictReader(io.StringIO(content))
+
+    required_cols = {"full_name", "email", "department_id"}
+    if not required_cols.issubset(set(reader.fieldnames or [])):
+        raise HTTPException(
+            status_code=400,
+            detail=f"CSV must contain columns: {required_cols}",
+        )
+
+    created = []
+    skipped = []
+
+    for row in reader:
+        email = row["email"].strip()
+        full_name = row["full_name"].strip()
+        department_id = int(row["department_id"].strip())
+        faculty_id = int(row["faculty_id"].strip()) if row.get("faculty_id", "").strip() else None
+        university_id = int(row["university_id"].strip()) if row.get("university_id", "").strip() else None
+
+        if db.query(User).filter(User.email == email).first():
+            skipped.append({"email": email, "reason": "already exists"})
+            continue
+
+        temp_password = secrets.token_urlsafe(10)
+        user = User(
+            email=email,
+            full_name=full_name,
+            hashed_password=get_password_hash(temp_password),
+            role="lecturer",
+            faculty_id=faculty_id,
+            university_id=university_id,
+        )
+        db.add(user)
+        db.flush()
+
+        lecturer = Lecturer(user_id=user.id, department_id=department_id)
+        db.add(lecturer)
+
+        created.append({
+            "email": email,
+            "full_name": full_name,
+            "temp_password": temp_password,
+        })
+
+    db.commit()
+    return {"created": created, "skipped": skipped}

@@ -27,7 +27,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Future<void> _load() async {
     final id = TimetableController.to.selected.value?.id;
     if (id == null) {
-      setState(() { _loading = false; _error = 'no_timetable'; });
+      setState(() { _loading = false; _error = 'no_run'; });
       return;
     }
     try {
@@ -43,9 +43,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
-    if (_error == 'no_timetable') {
+    if (_error == 'no_run') {
       return const Center(
-        child: Text('No timetable selected.',
+        child: Text('No run selected.',
             style: TextStyle(color: Colors.grey)),
       );
     }
