@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+
+import 'core/controllers/auth_controller.dart';
+import 'core/controllers/notification_controller.dart';
+import 'core/controllers/timetable_controller.dart';
 import 'core/routes.dart';
 import 'core/theme.dart';
 
@@ -16,6 +20,11 @@ class App extends StatelessWidget {
       themeMode: ThemeMode.system,
       initialRoute: AppRoutes.login,
       getPages: AppRoutes.pages,
+      initialBinding: BindingsBuilder(() {
+        Get.put(AuthController());
+        Get.put(TimetableController());
+        Get.put(NotificationController());
+      }),
     );
   }
 }

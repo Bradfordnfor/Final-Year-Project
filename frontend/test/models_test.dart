@@ -20,7 +20,7 @@ void main() {
     });
 
     test('faculty_head role helpers', () {
-      final user = UserModel(
+      const user = UserModel(
         id: 3, email: 'head@ub.cm', fullName: 'FET Head',
         role: 'faculty_head', isActive: true, facultyId: 1,
       );
@@ -30,7 +30,7 @@ void main() {
     });
 
     test('student role helpers', () {
-      final user = UserModel(
+      const user = UserModel(
         id: 2, email: 'stu@ub.cm', fullName: 'Student',
         role: 'student', isActive: true,
       );

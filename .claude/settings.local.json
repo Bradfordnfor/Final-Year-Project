@@ -13,7 +13,8 @@
       "Bash(venv/Scripts/python.exe -m pytest tests/test_solver.py -v)",
       "Bash(venv/Scripts/python.exe -m pytest tests/ --tb=short)",
       "Bash(flutter create *)",
-      "Bash(flutter build *)"
+      "Bash(flutter build *)",
+      "Bash(flutter analyze *)"
     ]
   }
 }
