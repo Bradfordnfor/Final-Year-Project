@@ -4,3 +4,7 @@ from app.models.room import Room
 from app.models.academic import Semester, TimeSlot, Level, Class, ClassGroup
 from app.models.user import User, Lecturer, LecturerAvailability, Student
 from app.models.course import Course, SharedCourse
+from app.models.timetable import (
+    Timetable, TimetableEntry, TimetableEntryClass,
+    TimetableConflict, GenerationJob, Notification,
+)
