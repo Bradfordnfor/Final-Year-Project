@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../features/auth/login_screen.dart';
+import '../features/dashboard/dashboard_screen.dart';
+import '../features/timetable/timetable_screen.dart';
 import 'widgets/app_shell.dart';
 
 class AppRoutes {
@@ -18,11 +20,11 @@ class AppRoutes {
     GetPage(name: login, page: () => const LoginScreen()),
     GetPage(
       name: dashboard,
-      page: () => const AppShell(child: _Placeholder('Dashboard')),
+      page: () => const AppShell(child: DashboardScreen()),
     ),
     GetPage(
       name: timetable,
-      page: () => const AppShell(child: _Placeholder('Timetable')),
+      page: () => const AppShell(child: TimetableScreen()),
     ),
     GetPage(
       name: generation,
