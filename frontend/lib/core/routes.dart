@@ -1,8 +1,12 @@
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../features/analytics/analytics_screen.dart';
 import '../features/auth/login_screen.dart';
+import '../features/conflicts/conflicts_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
+import '../features/generation/generation_screen.dart';
+import '../features/management/management_screen.dart';
+import '../features/notifications/notifications_screen.dart';
 import '../features/timetable/timetable_screen.dart';
 import 'widgets/app_shell.dart';
 
@@ -28,33 +32,23 @@ class AppRoutes {
     ),
     GetPage(
       name: generation,
-      page: () => const AppShell(child: _Placeholder('Generation')),
+      page: () => const AppShell(child: GenerationScreen()),
     ),
     GetPage(
       name: conflicts,
-      page: () => const AppShell(child: _Placeholder('Conflicts')),
+      page: () => const AppShell(child: ConflictsScreen()),
     ),
     GetPage(
       name: notifications,
-      page: () => const AppShell(child: _Placeholder('Notifications')),
+      page: () => const AppShell(child: NotificationsScreen()),
     ),
     GetPage(
       name: analytics,
-      page: () => const AppShell(child: _Placeholder('Analytics')),
+      page: () => const AppShell(child: AnalyticsScreen()),
     ),
     GetPage(
       name: management,
-      page: () => const AppShell(child: _Placeholder('Management')),
+      page: () => const AppShell(child: ManagementScreen()),
     ),
   ];
-}
-
-class _Placeholder extends StatelessWidget {
-  final String title;
-  const _Placeholder(this.title);
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Text(title, style: Theme.of(context).textTheme.headlineMedium),
-      );
 }
