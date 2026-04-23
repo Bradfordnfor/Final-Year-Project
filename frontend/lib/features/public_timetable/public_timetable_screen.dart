@@ -68,20 +68,20 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
     return Scaffold(
       backgroundColor: cs.surfaceContainerLow,
       appBar: AppBar(
-        backgroundColor: cs.primary,
-        foregroundColor: cs.onPrimary,
         title: Row(
           children: [
-            Icon(Icons.school, color: cs.onPrimary, size: 22),
-            const SizedBox(width: 10),
-            const Text('University Timetables'),
+            Icon(Icons.public, color: cs.primary, size: 20),
+            const SizedBox(width: 8),
+            const Text('Public Timetable'),
           ],
         ),
-        titleTextStyle: TextStyle(
-          color: cs.onPrimary,
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadPublished,
+            tooltip: 'Refresh',
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

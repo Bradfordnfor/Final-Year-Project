@@ -36,7 +36,7 @@ class AppRoutes {
     GetPage(name: analytics, page: () => const AppShell(child: AnalyticsScreen())),
     GetPage(name: management, page: () => const AppShell(child: ManagementScreen())),
     GetPage(name: facultySetup, page: () => const AppShell(child: FacultySetupScreen())),
-    GetPage(name: publicTimetable, page: () => const PublicTimetableScreen()),
+    GetPage(name: publicTimetable, page: () => const AppShell(child: PublicTimetableScreen())),
     GetPage(name: bulkImport, page: () => const AppShell(child: BulkImportScreen())),
   ];
 }
