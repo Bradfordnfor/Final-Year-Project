@@ -84,6 +84,14 @@ def seed():
                     end_time=end, semester_id=semester.id,
                 ))
 
+        super_admin = models.User(
+            email="superadmin@ub.cm",
+            hashed_password=get_password_hash("super123"),
+            full_name="Super Admin",
+            role="super_admin",
+            is_active=True,
+            university_id=university.id,
+        )
         admin = models.User(
             email="admin@ub.cm",
             hashed_password=get_password_hash("admin123"),
@@ -101,6 +109,24 @@ def seed():
             university_id=university.id,
             faculty_id=faculty.id,
         )
+        officer = models.User(
+            email="officer@ub.cm",
+            hashed_password=get_password_hash("officer123"),
+            full_name="Timetable Officer",
+            role="timetable_officer",
+            is_active=True,
+            university_id=university.id,
+            faculty_id=faculty.id,
+        )
+        lecturer = models.User(
+            email="lecturer@ub.cm",
+            hashed_password=get_password_hash("lecturer123"),
+            full_name="Dr. Test Lecturer",
+            role="lecturer",
+            is_active=True,
+            university_id=university.id,
+            department_id=dept_ee.id,
+        )
         student_user = models.User(
             email="student@ub.cm",
             hashed_password=get_password_hash("student123"),
@@ -110,12 +136,15 @@ def seed():
             university_id=university.id,
             department_id=dept_ee.id,
         )
-        db.add_all([admin, fet_head, student_user])
+        db.add_all([super_admin, admin, fet_head, officer, lecturer, student_user])
         db.commit()
         print("Seed complete.")
-        print("  Admin:    admin@ub.cm / admin123")
-        print("  FET Head: fethead@ub.cm / fethead123")
-        print("  Student:  student@ub.cm / student123")
+        print("  Super Admin:  superadmin@ub.cm / super123")
+        print("  Admin:        admin@ub.cm / admin123")
+        print("  FET Head:     fethead@ub.cm / fethead123")
+        print("  Officer:      officer@ub.cm / officer123")
+        print("  Lecturer:     lecturer@ub.cm / lecturer123")
+        print("  Student:      student@ub.cm / student123")
     except Exception as e:
         db.rollback()
         raise e

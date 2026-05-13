@@ -3,34 +3,70 @@ import 'package:get/get.dart';
 
 import '../controllers/auth_controller.dart';
 import '../controllers/notification_controller.dart';
+import '../models/user.dart';
 import '../routes.dart';
 
 class AppShell extends StatelessWidget {
   final Widget child;
   const AppShell({super.key, required this.child});
 
-  // Primary 4 items shown on mobile bottom nav
-  static const _primary = [
-    _Dest(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, label: 'Dashboard', route: AppRoutes.dashboard),
-    _Dest(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month, label: 'Timetable', route: AppRoutes.timetable),
-    _Dest(icon: Icons.auto_fix_high_outlined, activeIcon: Icons.auto_fix_high, label: 'Generate', route: AppRoutes.generation),
-    _Dest(icon: Icons.manage_accounts_outlined, activeIcon: Icons.manage_accounts, label: 'Manage', route: AppRoutes.management),
+  // Primary items (main nav bar / rail) — role-filtered in build
+  static final _primary = [
+    _Dest(
+      icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard,
+      label: 'Dashboard', route: AppRoutes.dashboard,
+    ),
+    _Dest(
+      icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,
+      label: 'Timetable', route: AppRoutes.timetable,
+      visible: (u) => !u.isStudent,
+    ),
+    _Dest(
+      icon: Icons.auto_fix_high_outlined, activeIcon: Icons.auto_fix_high,
+      label: 'Generate', route: AppRoutes.generation,
+      visible: (u) => u.canManageTimetable,
+    ),
+    _Dest(
+      icon: Icons.manage_accounts_outlined, activeIcon: Icons.manage_accounts,
+      label: 'Manage', route: AppRoutes.management,
+      visible: (u) => u.canManageUniversity || u.isLecturer,
+    ),
   ];
 
-  // Additional items shown in the sidebar / More drawer
-  static const _secondary = [
-    _Dest(icon: Icons.school_outlined, activeIcon: Icons.school, label: 'Faculty Setup', route: AppRoutes.facultySetup),
-    _Dest(icon: Icons.warning_amber_outlined, activeIcon: Icons.warning_amber, label: 'Conflicts', route: AppRoutes.conflicts),
-    _Dest(icon: Icons.bar_chart_outlined, activeIcon: Icons.bar_chart, label: 'Analytics', route: AppRoutes.analytics),
-    _Dest(icon: Icons.notifications_outlined, activeIcon: Icons.notifications, label: 'Notifications', route: AppRoutes.notifications),
-    _Dest(icon: Icons.upload_file_outlined, activeIcon: Icons.upload_file, label: 'Bulk Import', route: AppRoutes.bulkImport),
-    _Dest(icon: Icons.public_outlined, activeIcon: Icons.public, label: 'Public View', route: AppRoutes.publicTimetable),
+  // Secondary items (sidebar Tools section / More drawer) — role-filtered in build
+  static final _secondary = [
+    _Dest(
+      icon: Icons.school_outlined, activeIcon: Icons.school,
+      label: 'Faculty Setup', route: AppRoutes.facultySetup,
+      visible: (u) => u.canSetupFaculty,
+    ),
+    _Dest(
+      icon: Icons.warning_amber_outlined, activeIcon: Icons.warning_amber,
+      label: 'Conflicts', route: AppRoutes.conflicts,
+      visible: (u) => u.canManageTimetable,
+    ),
+    _Dest(
+      icon: Icons.bar_chart_outlined, activeIcon: Icons.bar_chart,
+      label: 'Analytics', route: AppRoutes.analytics,
+      visible: (u) => u.canManageTimetable || u.canManageUniversity,
+    ),
+    _Dest(
+      icon: Icons.notifications_outlined, activeIcon: Icons.notifications,
+      label: 'Notifications', route: AppRoutes.notifications,
+    ),
+    _Dest(
+      icon: Icons.upload_file_outlined, activeIcon: Icons.upload_file,
+      label: 'Bulk Import', route: AppRoutes.bulkImport,
+      visible: (u) => u.canManageUniversity,
+    ),
+    _Dest(
+      icon: Icons.public_outlined, activeIcon: Icons.public,
+      label: 'Public View', route: AppRoutes.publicTimetable,
+    ),
   ];
 
-  static List<_Dest> get _all => [..._primary, ..._secondary];
-
-  int _selectedIndex(String route) {
-    final idx = _all.indexWhere((d) => d.route == route);
+  int _selectedIndex(String route, List<_Dest> all) {
+    final idx = all.indexWhere((d) => d.route == route);
     return idx < 0 ? 0 : idx;
   }
 
@@ -38,29 +74,38 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = AuthController.to.user.value;
+    final filteredPrimary = user == null
+        ? _primary
+        : _primary.where((d) => d.visible(user)).toList();
+    final filteredSecondary = user == null
+        ? _secondary
+        : _secondary.where((d) => d.visible(user)).toList();
+
     final width = MediaQuery.of(context).size.width;
     final currentRoute = Get.currentRoute;
-    final selected = _selectedIndex(currentRoute);
+    final allVisible = [...filteredPrimary, ...filteredSecondary];
+    final selected = _selectedIndex(currentRoute, allVisible);
 
     if (width >= 1100) {
       return _SidebarLayout(
-        primary: _primary,
-        secondary: _secondary,
+        primary: filteredPrimary,
+        secondary: filteredSecondary,
         selected: selected,
         onNav: _navigate,
         child: child,
       );
     } else if (width >= 720) {
       return _RailLayout(
-        destinations: _all,
+        destinations: allVisible,
         selected: selected,
         onNav: _navigate,
         child: child,
       );
     } else {
       return _BottomNavLayout(
-        primary: _primary,
-        secondary: _secondary,
+        primary: filteredPrimary,
+        secondary: filteredSecondary,
         selected: selected,
         onNav: _navigate,
         child: child,
@@ -132,23 +177,23 @@ class _SidebarLayout extends StatelessWidget {
                   ),
                   Divider(color: cs.outlineVariant, height: 1),
                   const SizedBox(height: 8),
-                  // Primary nav
-                  _SectionLabel('Main'),
+                  const _SectionLabel('Main'),
                   ...primary.map((d) => _SidebarItem(
                     dest: d,
                     isSelected: allDests.indexOf(d) == selected,
                     onTap: () => onNav(d.route),
                   )),
-                  const SizedBox(height: 8),
-                  _SectionLabel('Tools'),
-                  ...secondary.map((d) => _SidebarItem(
-                    dest: d,
-                    isSelected: allDests.indexOf(d) == selected,
-                    onTap: () => onNav(d.route),
-                  )),
+                  if (secondary.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    const _SectionLabel('Tools'),
+                    ...secondary.map((d) => _SidebarItem(
+                      dest: d,
+                      isSelected: allDests.indexOf(d) == selected,
+                      onTap: () => onNav(d.route),
+                    )),
+                  ],
                   const Spacer(),
                   Divider(color: cs.outlineVariant, height: 1),
-                  // Notification + logout
                   _NotificationTile(),
                   ListTile(
                     leading: const Icon(Icons.logout),
@@ -289,7 +334,7 @@ class _RailLayout extends StatelessWidget {
   }
 }
 
-// ── BottomNavigationBar (<720 px) — max 4 + More ──────────────────────────────
+// ── BottomNavigationBar (<720 px) — max 4 primary + More ─────────────────────
 
 class _BottomNavLayout extends StatelessWidget {
   final List<_Dest> primary;
@@ -303,7 +348,6 @@ class _BottomNavLayout extends StatelessWidget {
     required this.selected, required this.onNav, required this.child,
   });
 
-  // Bottom nav shows 4 primary items + a "More" button
   int get _bottomSelected {
     if (selected < primary.length) return selected;
     return primary.length; // "More" tab
@@ -453,5 +497,15 @@ class _Dest {
   final IconData activeIcon;
   final String label;
   final String route;
-  const _Dest({required this.icon, required this.activeIcon, required this.label, required this.route});
+  final bool Function(UserModel) visible;
+
+  _Dest({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+    required this.route,
+    bool Function(UserModel)? visible,
+  }) : visible = visible ?? _always;
+
+  static bool _always(UserModel _) => true;
 }

@@ -61,10 +61,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               _StatCard(
                 icon: Icons.calendar_month_outlined,
-                label: 'Timetable Runs',
+                label: user.isStudent ? 'Published Timetables' : 'Timetable Runs',
                 value: '${timetables.length}',
                 color: Theme.of(context).colorScheme.primary,
-                onTap: () => Get.offAllNamed(AppRoutes.timetable),
+                onTap: user.isStudent
+                    ? () => Get.offAllNamed(AppRoutes.publicTimetable)
+                    : () => Get.offAllNamed(AppRoutes.timetable),
               ),
               _StatCard(
                 icon: Icons.notifications_outlined,
@@ -75,7 +77,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     : Theme.of(context).colorScheme.secondary,
                 onTap: () => Get.offAllNamed(AppRoutes.notifications),
               ),
-              if (timetables.isNotEmpty)
+              if (user.canManageTimetable && timetables.isNotEmpty)
                 _StatCard(
                   icon: Icons.warning_amber_outlined,
                   label: 'Conflicts',
@@ -129,7 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // Recent timetables
           if (timetables.isNotEmpty) ...[
             Text(
-              'Recent Timetables',
+              user.isStudent ? 'Published Timetables' : 'Recent Timetables',
               style: Theme.of(context)
                   .textTheme
                   .titleMedium
@@ -146,10 +148,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       title: Text(t.name),
                       subtitle: Text(
                           '${t.facultyIds.length} facult${t.facultyIds.length == 1 ? 'y' : 'ies'}'),
-                      trailing: _StatusBadge(t.status),
+                      trailing: user.isStudent ? null : _StatusBadge(t.status),
                       onTap: () {
                         TimetableController.to.selectRun(t.id);
-                        Get.offAllNamed(AppRoutes.timetable);
+                        Get.offAllNamed(user.isStudent
+                            ? AppRoutes.publicTimetable
+                            : AppRoutes.timetable);
                       },
                     ),
                   ),

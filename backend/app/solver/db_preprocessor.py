@@ -16,9 +16,8 @@ def build_solver_input(
     building_ids: list[int],
     db: Session,
 ) -> tuple[SolverInput, list[ConflictFlag]]:
-    # Derive sessions_per_week and overflow_threshold from first faculty
+    # overflow_threshold from first faculty; sessions_per_week is now per-course
     faculty = db.query(Faculty).filter(Faculty.id.in_(faculty_ids)).first()
-    sessions_per_week = faculty.sessions_per_week if faculty else 2
     overflow_threshold = faculty.university.overflow_threshold if faculty else 0.20
 
     # Time slots for this semester
@@ -67,6 +66,8 @@ def build_solver_input(
     for course in courses:
         if not course.lecturer_id:
             continue
+
+        sessions_per_week = course.weekly_hours
 
         shared_entries = db.query(SharedCourse).filter(SharedCourse.course_id == course.id).all()
         shared_class_ids = [s.class_id for s in shared_entries]

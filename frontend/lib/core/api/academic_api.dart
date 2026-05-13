@@ -12,11 +12,29 @@ class AcademicApi {
         .toList();
   }
 
+  Future<Semester> createSemester(Map<String, dynamic> data) async {
+    final response = await _client.post('/semesters/', data: data);
+    return Semester.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteSemester(int id) async {
+    await _client.delete('/semesters/$id');
+  }
+
   Future<List<TimeSlot>> getTimeSlots(int semesterId) async {
     final response = await _client.get('/semesters/$semesterId/timeslots');
     return (response.data as List)
         .map((e) => TimeSlot.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<TimeSlot> createTimeSlot(Map<String, dynamic> data) async {
+    final response = await _client.post('/semesters/timeslots/', data: data);
+    return TimeSlot.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteTimeSlot(int id) async {
+    await _client.delete('/semesters/timeslots/$id');
   }
 
   Future<List<StudyClass>> getClasses(int departmentId) async {

@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:get/get.dart';
 
+import '../../core/api/academic_api.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/course_api.dart';
 import '../../core/api/university_api.dart';
 import '../../core/api/user_api.dart';
-import '../../core/api/academic_api.dart';
 import '../../core/controllers/auth_controller.dart';
+import '../../core/models/academic.dart';
 import '../../core/models/course.dart';
 import '../../core/models/room.dart';
 import '../../core/models/university.dart';
 import '../../core/models/user.dart';
-import '../../core/models/academic.dart';
 
 class ManagementScreen extends StatelessWidget {
   const ManagementScreen({super.key});
@@ -20,26 +20,27 @@ class ManagementScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = AuthController.to.user.value;
-    final isAdmin = user?.isUniversityAdmin ?? false;
+    final isAdmin = user?.canManageUniversity ?? false;
     final isLecturer = user?.isLecturer ?? false;
 
     final tabs = <Tab>[];
     final views = <Widget>[];
 
     if (isAdmin) {
-      tabs.add(const Tab(icon: Icon(Icons.meeting_room_outlined), text: 'Rooms'));
-      views.add(const _RoomsTab());
-    }
+      tabs.add(const Tab(icon: Icon(Icons.apartment_outlined), text: 'Buildings'));
+      views.add(const _BuildingsTab());
 
-    tabs.add(const Tab(icon: Icon(Icons.book_outlined), text: 'Courses'));
-    views.add(const _CoursesTab());
-
-    if (isAdmin) {
       tabs.add(const Tab(icon: Icon(Icons.people_outline), text: 'Users'));
       views.add(const _UsersTab());
+
+      tabs.add(const Tab(icon: Icon(Icons.schedule_outlined), text: 'Semesters'));
+      views.add(const _SemestersTab());
+
+      tabs.add(const Tab(icon: Icon(Icons.book_outlined), text: 'Courses'));
+      views.add(const _CoursesTab());
     }
 
-    if (isLecturer || isAdmin) {
+    if (isLecturer) {
       tabs.add(const Tab(icon: Icon(Icons.event_available_outlined), text: 'Availability'));
       views.add(const _AvailabilityTab());
     }
@@ -62,17 +63,18 @@ class ManagementScreen extends StatelessWidget {
   }
 }
 
-// ─── Rooms Tab ───────────────────────────────────────────────────────────────
+// ─── Buildings Tab ────────────────────────────────────────────────────────────
 
-class _RoomsTab extends StatefulWidget {
-  const _RoomsTab();
+class _BuildingsTab extends StatefulWidget {
+  const _BuildingsTab();
 
   @override
-  State<_RoomsTab> createState() => _RoomsTabState();
+  State<_BuildingsTab> createState() => _BuildingsTabState();
 }
 
-class _RoomsTabState extends State<_RoomsTab> {
+class _BuildingsTabState extends State<_BuildingsTab> {
   late final UniversityApi _api;
+  List<Building> _buildings = [];
   List<Room> _rooms = [];
   bool _loading = true;
 
@@ -88,65 +90,96 @@ class _RoomsTabState extends State<_RoomsTab> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final rooms = await _api.getRooms();
-      setState(() { _rooms = rooms; _loading = false; });
+      final results = await Future.wait([_api.getBuildings(), _api.getRooms()]);
+      setState(() {
+        _buildings = results[0] as List<Building>;
+        _rooms = results[1] as List<Room>;
+        _loading = false;
+      });
     } catch (_) {
       setState(() => _loading = false);
     }
   }
 
-  Future<void> _delete(int id) async {
+  List<Room> _roomsFor(int buildingId) =>
+      _rooms.where((r) => r.buildingId == buildingId).toList();
+
+  Future<void> _addBuilding() async {
+    final nameCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Building'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: nameCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Building Name', hintText: 'e.g. FET Main Block')),
+            const SizedBox(height: 12),
+            TextField(controller: descCtrl,
+                decoration: const InputDecoration(labelText: 'Description (optional)')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final uid = AuthController.to.user.value?.universityId;
+      await _api.createBuilding({
+        'name': nameCtrl.text.trim(),
+        if (descCtrl.text.trim().isNotEmpty) 'description': descCtrl.text.trim(),
+        'university_id': uid,
+      });
+      _load();
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to add building: $e');
+    }
+  }
+
+  Future<void> _deleteBuilding(Building b) async {
+    final rooms = _roomsFor(b.id);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete Room'),
-        content: const Text('Are you sure you want to delete this room?'),
+        title: const Text('Delete Building'),
+        content: Text(rooms.isEmpty
+            ? 'Delete "${b.name}"?'
+            : 'Delete "${b.name}" and its ${rooms.length} room${rooms.length == 1 ? '' : 's'}?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     );
     if (confirm != true) return;
     try {
-      await _api.deleteRoom(id);
-      await _load();
+      await _api.deleteBuilding(b.id);
+      _load();
     } catch (e) {
-      Get.snackbar('Error', 'Failed to delete room: $e');
+      Get.snackbar('Error', 'Failed to delete building: $e');
     }
   }
 
-  Future<void> _showAddSheet() async {
+  Future<void> _addRoom(int buildingId) async {
     final nameCtrl = TextEditingController();
     final capCtrl = TextEditingController();
     String selectedType = _roomTypes.first;
-    List<Building> buildings = [];
-    int? selectedBuildingId;
-
-    try {
-      buildings = await _api.getBuildings();
-      if (buildings.isNotEmpty) selectedBuildingId = buildings.first.id;
-    } catch (_) {}
-
-    if (!mounted) return;
-
-    // Cannot add a room without a building
-    if (buildings.isEmpty) {
-      Get.snackbar(
-        'No Buildings Found',
-        'You must add a building before adding rooms.',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 4),
-      );
-      return;
-    }
 
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
           left: 24, right: 24, top: 24,
@@ -157,53 +190,32 @@ class _RoomsTabState extends State<_RoomsTab> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Text('Add Room', style: Theme.of(ctx).textTheme.titleLarge),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
-              ),
+              Row(children: [
+                Text('Add Room', style: Theme.of(ctx).textTheme.titleLarge),
+                const Spacer(),
+                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+              ]),
               const SizedBox(height: 16),
-              // Building — REQUIRED
-              DropdownButtonFormField<int>(
-                value: selectedBuildingId,
-                decoration: const InputDecoration(
-                  labelText: 'Building *',
-                  prefixIcon: Icon(Icons.apartment_outlined),
-                ),
-                items: buildings.map((b) => DropdownMenuItem(
-                  value: b.id, child: Text(b.name),
-                )).toList(),
-                onChanged: (v) => setSheet(() => selectedBuildingId = v),
-              ),
-              const SizedBox(height: 12),
               TextField(
                 controller: nameCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Room Name *',
-                  prefixIcon: Icon(Icons.meeting_room_outlined),
-                ),
+                    labelText: 'Room Name', hintText: 'e.g. Amphi 750',
+                    prefixIcon: Icon(Icons.meeting_room_outlined)),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: capCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Capacity *',
-                  prefixIcon: Icon(Icons.people_outline),
-                ),
                 keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                    labelText: 'Capacity',
+                    prefixIcon: Icon(Icons.people_outline)),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: selectedType,
                 decoration: const InputDecoration(
-                  labelText: 'Room Type',
-                  prefixIcon: Icon(Icons.category_outlined),
-                ),
+                    labelText: 'Room Type',
+                    prefixIcon: Icon(Icons.category_outlined)),
                 items: _roomTypes.map((t) => DropdownMenuItem(
                   value: t, child: Text(t.replaceAll('_', ' ')),
                 )).toList(),
@@ -212,11 +224,10 @@ class _RoomsTabState extends State<_RoomsTab> {
               const SizedBox(height: 20),
               FilledButton.icon(
                 icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add Room'),
                 onPressed: () async {
-                  if (nameCtrl.text.trim().isEmpty ||
-                      capCtrl.text.trim().isEmpty ||
-                      selectedBuildingId == null) {
-                    Get.snackbar('Required', 'Fill all required fields.',
+                  if (nameCtrl.text.trim().isEmpty || capCtrl.text.trim().isEmpty) {
+                    Get.snackbar('Required', 'Fill all fields.',
                         snackPosition: SnackPosition.BOTTOM);
                     return;
                   }
@@ -225,15 +236,14 @@ class _RoomsTabState extends State<_RoomsTab> {
                       'name': nameCtrl.text.trim(),
                       'capacity': int.parse(capCtrl.text.trim()),
                       'room_type': selectedType,
-                      'building_id': selectedBuildingId,
+                      'building_id': buildingId,
                     });
                     if (ctx.mounted) Navigator.pop(ctx);
-                    await _load();
+                    _load();
                   } catch (e) {
                     Get.snackbar('Error', 'Failed: $e');
                   }
                 },
-                label: const Text('Add Room'),
               ),
             ],
           ),
@@ -242,209 +252,169 @@ class _RoomsTabState extends State<_RoomsTab> {
     );
   }
 
+  Future<void> _deleteRoom(Room r) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Room'),
+        content: Text('Delete "${r.name}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await _api.deleteRoom(r.id);
+      _load();
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to delete room: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     if (_loading) return const Center(child: CircularProgressIndicator());
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddSheet,
-        child: const Icon(Icons.add),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _addBuilding,
+        icon: const Icon(Icons.add),
+        label: const Text('Add Building'),
       ),
-      body: _rooms.isEmpty
-          ? const Center(child: Text('No rooms yet.', style: TextStyle(color: Colors.grey)))
+      body: _buildings.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.apartment_outlined, size: 64, color: cs.outline),
+                  const SizedBox(height: 16),
+                  Text('No buildings yet', style: TextStyle(color: cs.outline)),
+                ],
+              ),
+            )
           : ListView.builder(
-              itemCount: _rooms.length,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+              itemCount: _buildings.length,
               itemBuilder: (_, i) {
-                final r = _rooms[i];
-                return ListTile(
-                  leading: const Icon(Icons.meeting_room_outlined),
-                  title: Text(r.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text('${r.roomType.replaceAll('_', ' ')} · Capacity ${r.capacity}'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    onPressed: () => _delete(r.id),
-                  ),
-                ).animate(delay: Duration(milliseconds: i * 30)).fadeIn(duration: 200.ms);
+                final b = _buildings[i];
+                final rooms = _roomsFor(b.id);
+                return _BuildingCard(
+                  building: b,
+                  rooms: rooms,
+                  onAddRoom: () => _addRoom(b.id),
+                  onDeleteBuilding: () => _deleteBuilding(b),
+                  onDeleteRoom: _deleteRoom,
+                ).animate(delay: Duration(milliseconds: i * 40)).fadeIn(duration: 200.ms);
               },
             ),
     );
   }
 }
 
-// ─── Courses Tab ─────────────────────────────────────────────────────────────
+class _BuildingCard extends StatefulWidget {
+  final Building building;
+  final List<Room> rooms;
+  final VoidCallback onAddRoom;
+  final VoidCallback onDeleteBuilding;
+  final Future<void> Function(Room) onDeleteRoom;
 
-class _CoursesTab extends StatefulWidget {
-  const _CoursesTab();
+  const _BuildingCard({
+    required this.building, required this.rooms,
+    required this.onAddRoom, required this.onDeleteBuilding,
+    required this.onDeleteRoom,
+  });
 
   @override
-  State<_CoursesTab> createState() => _CoursesTabState();
+  State<_BuildingCard> createState() => _BuildingCardState();
 }
 
-class _CoursesTabState extends State<_CoursesTab> {
-  late final CourseApi _api;
-  List<Course> _courses = [];
-  bool _loading = true;
-  String _search = '';
-
-  static const _roomTypes = ['lecture_hall', 'lab', 'outdoor'];
-
-  @override
-  void initState() {
-    super.initState();
-    _api = CourseApi(ApiClient(token: AuthController.to.token));
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    try {
-      final courses = await _api.getCourses();
-      setState(() { _courses = courses; _loading = false; });
-    } catch (_) {
-      setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _delete(int id) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete Course'),
-        content: const Text('Are you sure?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    try {
-      await _api.deleteCourse(id);
-      await _load();
-    } catch (e) {
-      Get.snackbar('Error', 'Failed: $e');
-    }
-  }
-
-  Future<void> _showAddSheet() async {
-    final codeCtrl = TextEditingController();
-    final nameCtrl = TextEditingController();
-    String selectedType = _roomTypes.first;
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 24, right: 24, top: 24,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-        ),
-        child: StatefulBuilder(
-          builder: (ctx, setSheet) => Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Add Course', style: Theme.of(ctx).textTheme.titleLarge),
-              const SizedBox(height: 16),
-              TextField(
-                controller: codeCtrl,
-                decoration: const InputDecoration(labelText: 'Course Code (e.g. CSC 201)', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'Course Name', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: selectedType,
-                decoration: const InputDecoration(labelText: 'Room Type Required', border: OutlineInputBorder()),
-                items: _roomTypes.map((t) => DropdownMenuItem(
-                  value: t, child: Text(t.replaceAll('_', ' ')),
-                )).toList(),
-                onChanged: (v) => setSheet(() => selectedType = v!),
-              ),
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: () async {
-                  try {
-                    await _api.createCourse({
-                      'code': codeCtrl.text.trim(),
-                      'name': nameCtrl.text.trim(),
-                      'room_type_required': selectedType,
-                    });
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    await _load();
-                  } catch (e) {
-                    Get.snackbar('Error', 'Failed: $e');
-                  }
-                },
-                child: const Text('Add Course'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+class _BuildingCardState extends State<_BuildingCard> {
+  bool _expanded = true;
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _courses.where((c) =>
-        c.code.toLowerCase().contains(_search.toLowerCase()) ||
-        c.name.toLowerCase().contains(_search.toLowerCase())).toList();
+    final cs = Theme.of(context).colorScheme;
+    final rooms = widget.rooms;
 
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddSheet,
-        child: const Icon(Icons.add),
-      ),
-      body: Column(
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Search courses…',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-                isDense: true,
+          InkWell(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.apartment_outlined,
+                        size: 20, color: cs.onPrimaryContainer),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.building.name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 15)),
+                        Text('${rooms.length} room${rooms.length == 1 ? '' : 's'}',
+                            style: TextStyle(fontSize: 12, color: cs.outline)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline, size: 20),
+                    onPressed: widget.onAddRoom,
+                    tooltip: 'Add Room',
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.delete_outline, size: 20, color: cs.error),
+                    onPressed: widget.onDeleteBuilding,
+                    tooltip: 'Delete Building',
+                  ),
+                  Icon(_expanded ? Icons.expand_less : Icons.expand_more,
+                      color: cs.outline),
+                ],
               ),
-              onChanged: (v) => setState(() => _search = v),
             ),
           ),
-          Expanded(
-            child: filtered.isEmpty
-                ? const Center(child: Text('No courses found.', style: TextStyle(color: Colors.grey)))
-                : ListView.builder(
-                    itemCount: filtered.length,
-                    itemBuilder: (_, i) {
-                      final c = filtered[i];
-                      return ListTile(
-                        leading: const Icon(Icons.book_outlined),
-                        title: Text(c.code,
-                            style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(c.name),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Chip(
-                              label: Text(c.roomTypeRequired.replaceAll('_', ' '),
-                                  style: const TextStyle(fontSize: 11)),
-                              padding: EdgeInsets.zero,
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.red),
-                              onPressed: () => _delete(c.id),
-                            ),
-                          ],
-                        ),
-                      ).animate(delay: Duration(milliseconds: i * 30)).fadeIn(duration: 200.ms);
-                    },
-                  ),
-          ),
+          if (_expanded) ...[
+            Divider(color: cs.outlineVariant, height: 1),
+            if (rooms.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('No rooms yet — tap + to add one',
+                    style: TextStyle(color: cs.outline, fontSize: 13)),
+              )
+            else
+              ...rooms.map((r) => ListTile(
+                    contentPadding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+                    leading: Icon(Icons.meeting_room_outlined,
+                        color: cs.primary, size: 20),
+                    title: Text(r.name,
+                        style: const TextStyle(fontWeight: FontWeight.w500)),
+                    subtitle: Text(
+                        '${r.roomType.replaceAll('_', ' ')} · Cap ${r.capacity}',
+                        style: const TextStyle(fontSize: 12)),
+                    trailing: IconButton(
+                      icon: Icon(Icons.delete_outline, color: cs.error, size: 20),
+                      onPressed: () => widget.onDeleteRoom(r),
+                    ),
+                  )),
+          ],
         ],
       ),
     );
@@ -623,6 +593,765 @@ class _UsersTabState extends State<_UsersTab> {
   }
 }
 
+// ─── Semesters & Time Slots Tab ───────────────────────────────────────────────
+
+class _SemestersTab extends StatefulWidget {
+  const _SemestersTab();
+
+  @override
+  State<_SemestersTab> createState() => _SemestersTabState();
+}
+
+class _SemestersTabState extends State<_SemestersTab> {
+  late final AcademicApi _api;
+  List<Semester> _semesters = [];
+  final Map<int, List<TimeSlot>> _slots = {};
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _api = AcademicApi(ApiClient(token: AuthController.to.token));
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final sems = await _api.getSemesters();
+      final slotResults = await Future.wait(sems.map((s) => _api.getTimeSlots(s.id)));
+      setState(() {
+        _semesters = sems;
+        _slots.clear();
+        for (var i = 0; i < sems.length; i++) {
+          _slots[sems[i].id] = slotResults[i];
+        }
+        _loading = false;
+      });
+    } catch (_) {
+      setState(() => _loading = false);
+    }
+  }
+
+  String _fmtDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  String _fmtTime(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  Future<void> _addSemester() async {
+    final nameCtrl = TextEditingController();
+    DateTime? startDate;
+    DateTime? endDate;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) {
+          final canAdd = nameCtrl.text.trim().isNotEmpty &&
+              startDate != null && endDate != null;
+          return AlertDialog(
+            title: const Text('Add Semester'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  onChanged: (_) => setS(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Name *',
+                    hintText: 'e.g. 2024/2025 First Semester',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                  label: Text(startDate == null ? 'Pick Start Date' : _fmtDate(startDate!)),
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2035),
+                    );
+                    if (d != null) setS(() => startDate = d);
+                  },
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                  label: Text(endDate == null ? 'Pick End Date' : _fmtDate(endDate!)),
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: startDate ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2035),
+                    );
+                    if (d != null) setS(() => endDate = d);
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: canAdd ? () => Navigator.pop(ctx, true) : null,
+                child: const Text('Add'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (confirmed != true || startDate == null || endDate == null) return;
+    try {
+      final uid = AuthController.to.user.value?.universityId;
+      await _api.createSemester({
+        'name': nameCtrl.text.trim(),
+        'start_date': _fmtDate(startDate!),
+        'end_date': _fmtDate(endDate!),
+        'university_id': uid,
+      });
+      _load();
+    } catch (e) {
+      Get.snackbar('Error', 'Failed: $e', snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
+  Future<void> _deleteSemester(Semester s) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Semester'),
+        content: Text('Delete "${s.name}"? This will also delete all its time slots.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await _api.deleteSemester(s.id);
+      _load();
+    } catch (e) {
+      Get.snackbar('Error', 'Failed: $e', snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
+  Future<void> _addTimeSlots(int semesterId) async {
+    const allDays = [
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+    ];
+    final selectedDays = <String>{
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
+    };
+    final starts = <TimeOfDay?>[null];
+    final ends = <TimeOfDay?>[null];
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) {
+          int valid = 0;
+          for (var i = 0; i < starts.length; i++) {
+            if (starts[i] != null && ends[i] != null) valid++;
+          }
+          final total = valid * selectedDays.length;
+
+          return AlertDialog(
+            title: const Text('Add Time Slots'),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        'Define time ranges once — they are applied to every selected day.',
+                        style: TextStyle(fontSize: 12, color: Colors.blue),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Day selector
+                    const Text('Apply to days',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6, runSpacing: 6,
+                      children: allDays.map((d) {
+                        final sel = selectedDays.contains(d);
+                        return FilterChip(
+                          label: Text(d.substring(0, 3),
+                              style: const TextStyle(fontSize: 12)),
+                          selected: sel,
+                          onSelected: (v) => setS(() {
+                            if (v) {
+                              selectedDays.add(d);
+                            } else {
+                              selectedDays.remove(d);
+                            }
+                          }),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Time range rows
+                    Row(children: [
+                      const Text('Time ranges',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 13)),
+                      const Spacer(),
+                      TextButton.icon(
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Add range',
+                            style: TextStyle(fontSize: 12)),
+                        style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact),
+                        onPressed: () => setS(() {
+                          starts.add(null);
+                          ends.add(null);
+                        }),
+                      ),
+                    ]),
+                    const SizedBox(height: 4),
+                    ...List.generate(starts.length, (i) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact),
+                            onPressed: () async {
+                              final t = await showTimePicker(
+                                context: ctx,
+                                initialTime:
+                                    const TimeOfDay(hour: 7, minute: 30),
+                                builder: (c, child) => MediaQuery(
+                                  data: MediaQuery.of(c).copyWith(
+                                      alwaysUse24HourFormat: true),
+                                  child: child!,
+                                ),
+                              );
+                              if (t != null) setS(() => starts[i] = t);
+                            },
+                            child: Text(
+                              starts[i] == null
+                                  ? 'Start'
+                                  : _fmtTime(starts[i]!),
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6),
+                          child: Text('–'),
+                        ),
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact),
+                            onPressed: () async {
+                              final t = await showTimePicker(
+                                context: ctx,
+                                initialTime:
+                                    const TimeOfDay(hour: 9, minute: 30),
+                                builder: (c, child) => MediaQuery(
+                                  data: MediaQuery.of(c).copyWith(
+                                      alwaysUse24HourFormat: true),
+                                  child: child!,
+                                ),
+                              );
+                              if (t != null) setS(() => ends[i] = t);
+                            },
+                            child: Text(
+                              ends[i] == null ? 'End' : _fmtTime(ends[i]!),
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 16),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: starts.length > 1
+                              ? () => setS(() {
+                                    starts.removeAt(i);
+                                    ends.removeAt(i);
+                                  })
+                              : null,
+                        ),
+                      ]),
+                    )),
+
+                    if (total > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Will create $total slot${total == 1 ? '' : 's'}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.green.shade700,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                onPressed: total == 0 ? null : () => Navigator.pop(ctx, true),
+                child: Text(
+                    'Create $total slot${total == 1 ? '' : 's'}'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final validStarts =
+        List.generate(starts.length, (i) => starts[i]).toList();
+    final validEnds = List.generate(ends.length, (i) => ends[i]).toList();
+
+    setState(() => _loading = true);
+    try {
+      for (var i = 0; i < validStarts.length; i++) {
+        if (validStarts[i] == null || validEnds[i] == null) continue;
+        for (final day in selectedDays) {
+          await _api.createTimeSlot({
+            'day_of_week': day,
+            'start_time': _fmtTime(validStarts[i]!),
+            'end_time': _fmtTime(validEnds[i]!),
+            'semester_id': semesterId,
+          });
+        }
+      }
+    } catch (e) {
+      Get.snackbar('Error', 'Failed: $e',
+          snackPosition: SnackPosition.BOTTOM);
+    }
+    _load();
+  }
+
+  Future<void> _deleteTimeSlot(int id) async {
+    try {
+      await _api.deleteTimeSlot(id);
+      _load();
+    } catch (e) {
+      Get.snackbar('Error', 'Failed: $e', snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (_loading) return const Center(child: CircularProgressIndicator());
+
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _addSemester,
+        icon: const Icon(Icons.add),
+        label: const Text('Add Semester'),
+      ),
+      body: _semesters.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.calendar_month_outlined, size: 64, color: cs.outline),
+                  const SizedBox(height: 16),
+                  Text('No semesters yet', style: TextStyle(color: cs.outline)),
+                  const SizedBox(height: 8),
+                  Text('Add a semester to start defining time slots.',
+                      style: TextStyle(color: cs.outline, fontSize: 12)),
+                ],
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+              itemCount: _semesters.length,
+              itemBuilder: (_, i) {
+                final s = _semesters[i];
+                return _SemesterCard(
+                  semester: s,
+                  slots: _slots[s.id] ?? [],
+                  onDelete: () => _deleteSemester(s),
+                  onAddSlot: () => _addTimeSlots(s.id),
+                  onDeleteSlot: _deleteTimeSlot,
+                ).animate(delay: Duration(milliseconds: i * 40)).fadeIn(duration: 200.ms);
+              },
+            ),
+    );
+  }
+}
+
+class _SemesterCard extends StatefulWidget {
+  final Semester semester;
+  final List<TimeSlot> slots;
+  final VoidCallback onDelete;
+  final VoidCallback onAddSlot;
+  final Future<void> Function(int) onDeleteSlot;
+
+  const _SemesterCard({
+    required this.semester, required this.slots,
+    required this.onDelete, required this.onAddSlot,
+    required this.onDeleteSlot,
+  });
+
+  @override
+  State<_SemesterCard> createState() => _SemesterCardState();
+}
+
+class _SemesterCardState extends State<_SemesterCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final sem = widget.semester;
+    final slots = widget.slots;
+
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    final byDay = <String, List<TimeSlot>>{
+      for (final d in days)
+        d: slots
+            .where((s) => s.dayOfWeek.toLowerCase() == d.toLowerCase())
+            .toList()
+          ..sort((a, b) => a.startTime.compareTo(b.startTime)),
+    };
+    final activeDays = days.where((d) => (byDay[d] ?? []).isNotEmpty).toList();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: sem.isActive ? cs.primaryContainer : cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.calendar_month_outlined,
+                        size: 20,
+                        color: sem.isActive ? cs.onPrimaryContainer : cs.onSurfaceVariant),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Flexible(
+                            child: Text(sem.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600, fontSize: 15)),
+                          ),
+                          if (sem.isActive) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green.shade100,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text('Active',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.green.shade700,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                          ],
+                        ]),
+                        Text(
+                          '${sem.startDate} → ${sem.endDate}  ·  '
+                          '${slots.length} slot${slots.length == 1 ? '' : 's'}',
+                          style: TextStyle(fontSize: 12, color: cs.outline),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline, size: 20),
+                    onPressed: widget.onAddSlot,
+                    tooltip: 'Add Time Slot',
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.delete_outline, size: 20, color: cs.error),
+                    onPressed: widget.onDelete,
+                    tooltip: 'Delete Semester',
+                  ),
+                  Icon(_expanded ? Icons.expand_less : Icons.expand_more,
+                      color: cs.outline),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded) ...[
+            Divider(color: cs.outlineVariant, height: 1),
+            if (slots.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('No time slots yet — tap + to add one',
+                    style: TextStyle(color: cs.outline, fontSize: 13)),
+              )
+            else
+              ...activeDays.map((day) {
+                final daySlots = byDay[day]!;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                      child: Text(day,
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                              color: cs.secondary)),
+                    ),
+                    ...daySlots.map((slot) => ListTile(
+                          contentPadding: const EdgeInsets.fromLTRB(32, 0, 8, 0),
+                          dense: true,
+                          leading: Icon(Icons.schedule_outlined,
+                              size: 16, color: cs.outline),
+                          title: Text(slot.label,
+                              style: const TextStyle(fontSize: 13)),
+                          trailing: IconButton(
+                            icon: Icon(Icons.delete_outline,
+                                color: cs.error, size: 18),
+                            onPressed: () => widget.onDeleteSlot(slot.id),
+                          ),
+                        )),
+                  ],
+                );
+              }),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Courses Tab ─────────────────────────────────────────────────────────────
+
+class _CoursesTab extends StatefulWidget {
+  const _CoursesTab();
+
+  @override
+  State<_CoursesTab> createState() => _CoursesTabState();
+}
+
+class _CoursesTabState extends State<_CoursesTab> {
+  late final CourseApi _api;
+  List<Course> _courses = [];
+  bool _loading = true;
+  String _search = '';
+
+  static const _roomTypes = ['lecture_hall', 'lab', 'outdoor'];
+
+  @override
+  void initState() {
+    super.initState();
+    _api = CourseApi(ApiClient(token: AuthController.to.token));
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final courses = await _api.getCourses();
+      setState(() { _courses = courses; _loading = false; });
+    } catch (_) {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _delete(int id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Course'),
+        content: const Text('Are you sure?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await _api.deleteCourse(id);
+      await _load();
+    } catch (e) {
+      Get.snackbar('Error', 'Failed: $e');
+    }
+  }
+
+  Future<void> _showAddSheet() async {
+    final codeCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    String selectedType = _roomTypes.first;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 24, right: 24, top: 24,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
+        child: StatefulBuilder(
+          builder: (ctx, setSheet) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Add Course', style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              TextField(
+                controller: codeCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Course Code (e.g. CSC 201)',
+                    border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Course Name', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: selectedType,
+                decoration: const InputDecoration(
+                    labelText: 'Room Type Required',
+                    border: OutlineInputBorder()),
+                items: _roomTypes.map((t) => DropdownMenuItem(
+                  value: t, child: Text(t.replaceAll('_', ' ')),
+                )).toList(),
+                onChanged: (v) => setSheet(() => selectedType = v!),
+              ),
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: () async {
+                  try {
+                    await _api.createCourse({
+                      'code': codeCtrl.text.trim(),
+                      'name': nameCtrl.text.trim(),
+                      'room_type_required': selectedType,
+                    });
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    await _load();
+                  } catch (e) {
+                    Get.snackbar('Error', 'Failed: $e');
+                  }
+                },
+                child: const Text('Add Course'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _courses.where((c) =>
+        c.code.toLowerCase().contains(_search.toLowerCase()) ||
+        c.name.toLowerCase().contains(_search.toLowerCase())).toList();
+
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddSheet,
+        child: const Icon(Icons.add),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              decoration: const InputDecoration(
+                hintText: 'Search courses…',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _search = v),
+            ),
+          ),
+          Expanded(
+            child: filtered.isEmpty
+                ? const Center(
+                    child: Text('No courses found.',
+                        style: TextStyle(color: Colors.grey)))
+                : ListView.builder(
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) {
+                      final c = filtered[i];
+                      return ListTile(
+                        leading: const Icon(Icons.book_outlined),
+                        title: Text(c.code,
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(c.name),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Chip(
+                              label: Text(c.roomTypeRequired.replaceAll('_', ' '),
+                                  style: const TextStyle(fontSize: 11)),
+                              padding: EdgeInsets.zero,
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline,
+                                  color: Colors.red),
+                              onPressed: () => _delete(c.id),
+                            ),
+                          ],
+                        ),
+                      ).animate(
+                              delay: Duration(milliseconds: i * 30))
+                          .fadeIn(duration: 200.ms);
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Availability Tab ─────────────────────────────────────────────────────────
 
 class _AvailabilityTab extends StatefulWidget {
@@ -673,11 +1402,9 @@ class _AvailabilityTabState extends State<_AvailabilityTab> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      // Delete all existing unavailability entries
       for (final entry in _unavailable) {
         await _api.deleteAvailability(entry['id'] as int);
       }
-      // Add current selections
       for (final slotId in _unavailableSlotIds) {
         await _api.addAvailability(_lecturerId, slotId);
       }
@@ -737,7 +1464,8 @@ class _AvailabilityTabState extends State<_AvailabilityTab> {
                         const DataColumn(label: Text('Time')),
                         ...days.map((d) => DataColumn(
                             label: Text(d.substring(0, 3),
-                                style: const TextStyle(fontWeight: FontWeight.w600)))),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)))),
                       ],
                       rows: _buildRows(days, slotsByDay),
                     ),
@@ -751,10 +1479,12 @@ class _AvailabilityTabState extends State<_AvailabilityTab> {
             icon: _saving
                 ? const SizedBox(
                     width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.save_outlined),
             label: const Text('Save Availability'),
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48)),
           ),
         ),
       ],
@@ -763,7 +1493,6 @@ class _AvailabilityTabState extends State<_AvailabilityTab> {
 
   List<DataRow> _buildRows(
       List<String> days, Map<String, List<TimeSlot>> slotsByDay) {
-    // Collect unique time labels
     final timeLabels = _slots.map((s) => s.label).toSet().toList()..sort();
 
     return timeLabels.map((label) {
@@ -771,7 +1500,9 @@ class _AvailabilityTabState extends State<_AvailabilityTab> {
         cells: [
           DataCell(Text(label, style: const TextStyle(fontSize: 12))),
           ...days.map((day) {
-            final slot = slotsByDay[day]?.where((s) => s.label == label).firstOrNull;
+            final slot = slotsByDay[day]
+                ?.where((s) => s.label == label)
+                .firstOrNull;
             if (slot == null) return const DataCell(SizedBox.shrink());
             final isUnavailable = _unavailableSlotIds.contains(slot.id);
             return DataCell(
@@ -795,7 +1526,9 @@ class _AvailabilityTabState extends State<_AvailabilityTab> {
                   child: Icon(
                     isUnavailable ? Icons.close : Icons.check,
                     size: 16,
-                    color: isUnavailable ? Colors.red.shade700 : Colors.green.shade700,
+                    color: isUnavailable
+                        ? Colors.red.shade700
+                        : Colors.green.shade700,
                   ),
                 ),
               ),

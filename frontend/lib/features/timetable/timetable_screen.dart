@@ -237,7 +237,12 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canManage = AuthController.to.user.value?.canManageTimetable ?? false;
+    final user = AuthController.to.user.value;
+    final canManage = user?.canManageTimetable ?? false;
+    // advance: timetable_officer + faculty_head + admins (matches backend require_timetable_officer)
+    final canAdvance = (user?.canManageTimetable ?? false) || (user?.canSetupFaculty ?? false);
+    // publish: faculty_head + admins (matches backend require_faculty_head)
+    final canPublish = user?.canSetupFaculty ?? false;
     final cs = Theme.of(context).colorScheme;
 
     return Obx(() {
@@ -333,6 +338,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                           timeSlots: _timeSlots,
                           run: selected,
                           canManage: canManage,
+                          canAdvance: canAdvance,
+                          canPublish: canPublish,
                         ),
                 ),
               ],
@@ -396,10 +403,13 @@ class _TimetableGrid extends StatelessWidget {
   final List<TimeSlot> timeSlots;
   final TimetableRun run;
   final bool canManage;
+  final bool canAdvance;
+  final bool canPublish;
 
   const _TimetableGrid({
     required this.entries, required this.timeSlots,
     required this.run, required this.canManage,
+    this.canAdvance = false, this.canPublish = false,
   });
 
   static const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -430,15 +440,33 @@ class _TimetableGrid extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Run header
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
-                child: Text(run.name,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              Text(run.name,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(width: 12),
               _StatusBadge(run.status),
+              if (canAdvance && run.status == 'draft')
+                OutlinedButton.icon(
+                  onPressed: () => TimetableController.to.advanceStatus(run.id),
+                  icon: const Icon(Icons.send_outlined, size: 16),
+                  label: const Text('Submit for Review'),
+                ),
+              if (canAdvance && run.status == 'under_review')
+                FilledButton.tonalIcon(
+                  onPressed: () => TimetableController.to.advanceStatus(run.id),
+                  icon: const Icon(Icons.check_circle_outline, size: 16),
+                  label: const Text('Approve'),
+                ),
+              if (canPublish && run.status == 'approved')
+                FilledButton.icon(
+                  onPressed: () => TimetableController.to.publish(run.id),
+                  icon: const Icon(Icons.publish_outlined, size: 16),
+                  label: const Text('Publish'),
+                ),
             ],
           ),
           const SizedBox(height: 4),

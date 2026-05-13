@@ -16,6 +16,7 @@ class Course(Base):
     level_id: Mapped[int] = mapped_column(ForeignKey("levels.id"))
     department_id: Mapped[int] = mapped_column(ForeignKey("departments.id"))
     lecturer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("lecturers.id"), nullable=True)
+    weekly_hours: Mapped[int] = mapped_column(Integer, default=2)
 
     level: Mapped["Level"] = relationship()
     department: Mapped["Department"] = relationship(back_populates="courses")

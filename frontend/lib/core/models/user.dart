@@ -30,13 +30,25 @@ class UserModel {
         facultyId: json['faculty_id'] as int?,
       );
 
+  // Exact role checks — flat, no cascading
   bool get isSuperAdmin => role == 'super_admin';
-  bool get isUniversityAdmin => role == 'university_admin' || isSuperAdmin;
-  bool get isFacultyHead => role == 'faculty_head' || isUniversityAdmin;
-  bool get isTimetableOfficer => role == 'timetable_officer' || isFacultyHead;
+  bool get isUniversityAdmin => role == 'university_admin';
+  bool get isFacultyHead => role == 'faculty_head';
+  bool get isTimetableOfficer => role == 'timetable_officer';
   bool get isLecturer => role == 'lecturer';
   bool get isStudent => role == 'student';
-  bool get canManageTimetable => isTimetableOfficer;
+
+  // Permission groups
+  // University management: buildings, users, semesters, time slots
+  bool get canManageUniversity => isSuperAdmin || isUniversityAdmin;
+  // Faculty academic data: departments, levels, courses
+  bool get canSetupFaculty => isSuperAdmin || isUniversityAdmin || isFacultyHead;
+  // Timetable workflow: create runs, generate, resolve conflicts, publish
+  bool get canManageTimetable => isSuperAdmin || isTimetableOfficer;
+  // Can view internal timetable grid (not public)
+  bool get canViewTimetable => !isStudent;
+  // Any internal user (not student)
+  bool get isStaff => !isStudent;
 }
 
 class TokenResponse {

@@ -33,7 +33,10 @@ class TimetableController extends GetxController {
   Future<void> fetchRuns() async {
     isLoading.value = true;
     try {
-      runs.value = await _api.getRuns();
+      final user = AuthController.to.user.value;
+      runs.value = (user?.isStudent ?? false)
+          ? await _api.getPublishedRuns()
+          : await _api.getRuns();
     } finally {
       isLoading.value = false;
     }
@@ -111,13 +114,21 @@ class TimetableController extends GetxController {
   }
 
   Future<void> advanceStatus(int runId) async {
-    final updated = await _api.advanceStatus(runId);
-    _replaceRun(updated);
+    try {
+      final updated = await _api.advanceStatus(runId);
+      _replaceRun(updated);
+    } catch (e) {
+      Get.snackbar('Error', e.toString(), snackPosition: SnackPosition.BOTTOM);
+    }
   }
 
   Future<void> publish(int runId) async {
-    final updated = await _api.publish(runId);
-    _replaceRun(updated);
+    try {
+      final updated = await _api.publish(runId);
+      _replaceRun(updated);
+    } catch (e) {
+      Get.snackbar('Error', e.toString(), snackPosition: SnackPosition.BOTTOM);
+    }
   }
 
   Future<void> resolveConflict(

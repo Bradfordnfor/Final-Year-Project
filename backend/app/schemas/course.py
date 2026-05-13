@@ -9,6 +9,7 @@ class CourseCreate(BaseModel):
     level_id: int
     department_id: int
     lecturer_id: Optional[int] = None
+    weekly_hours: int = 2
 
 
 class CourseUpdate(BaseModel):
@@ -16,6 +17,7 @@ class CourseUpdate(BaseModel):
     name: Optional[str] = None
     room_type_required: Optional[str] = None
     lecturer_id: Optional[int] = None
+    weekly_hours: Optional[int] = None
 
 
 class CourseOut(BaseModel):
@@ -26,6 +28,7 @@ class CourseOut(BaseModel):
     level_id: int
     department_id: int
     lecturer_id: Optional[int]
+    weekly_hours: int
 
     model_config = {"from_attributes": True}
 
