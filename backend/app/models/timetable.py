@@ -1,3 +1,4 @@
+# backend/app/models/timetable.py
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Text
@@ -32,6 +33,9 @@ class TimetableRun(Base):
         back_populates="run", cascade="all, delete-orphan"
     )
     jobs: Mapped[list["GenerationJob"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+    approvals: Mapped[list["FacultyHeadApproval"]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )
 
@@ -69,9 +73,7 @@ class TimetableEntry(Base):
     time_slot_id: Mapped[int] = mapped_column(ForeignKey("time_slots.id"))
     group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("class_groups.id"), nullable=True)
     week_pattern: Mapped[str] = mapped_column(String(20), default="every_week")
-    # every_week | odd_weeks | even_weeks | rotation_group
     rotation_sequence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # JSON array string e.g. '["A","B","C"]' — group rotation order
     is_overcapacity: Mapped[bool] = mapped_column(Boolean, default=False)
     is_merged: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -87,7 +89,6 @@ class TimetableEntry(Base):
 
 
 class TimetableEntryClass(Base):
-    """Junction: one TimetableEntry can cover multiple Classes (merged sessions)."""
     __tablename__ = "timetable_entry_classes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -104,13 +105,11 @@ class TimetableConflict(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     run_id: Mapped[int] = mapped_column(ForeignKey("timetable_runs.id"))
     conflict_type: Mapped[str] = mapped_column(String(50))
-    # lab_split_conflict | no_room_available | solver_infeasible
     course_id: Mapped[Optional[int]] = mapped_column(ForeignKey("courses.id"), nullable=True)
     class_id: Mapped[Optional[int]] = mapped_column(ForeignKey("classes.id"), nullable=True)
     details: Mapped[str] = mapped_column(Text, default="{}")
     resolved: Mapped[bool] = mapped_column(Boolean, default=False)
     resolution: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    # add_session | rotate_groups
 
     run: Mapped["TimetableRun"] = relationship(back_populates="conflicts")
     course: Mapped[Optional["Course"]] = relationship()
@@ -123,12 +122,28 @@ class GenerationJob(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     run_id: Mapped[int] = mapped_column(ForeignKey("timetable_runs.id"))
     status: Mapped[str] = mapped_column(String(20), default="pending")
-    # pending | running | completed | failed
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     run: Mapped["TimetableRun"] = relationship(back_populates="jobs")
+
+
+class FacultyHeadApproval(Base):
+    __tablename__ = "faculty_head_approvals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("timetable_runs.id"))
+    faculty_id: Mapped[int] = mapped_column(ForeignKey("faculties.id"))
+    faculty_head_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    # pending | approved | rejected
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    run: Mapped["TimetableRun"] = relationship(back_populates="approvals")
+    faculty: Mapped["Faculty"] = relationship()
+    faculty_head: Mapped["User"] = relationship()
 
 
 class Notification(Base):
@@ -139,6 +154,7 @@ class Notification(Base):
     message: Mapped[str] = mapped_column(String(500))
     notification_type: Mapped[str] = mapped_column(String(50))
     # timetable_published | slot_changed | conflict_flagged | generation_complete
+    # timetable_review | timetable_approved | timetable_rejected
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
