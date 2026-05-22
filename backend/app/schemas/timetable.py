@@ -81,3 +81,19 @@ class NotificationResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class FacultyApprovalOut(BaseModel):
+    id: int
+    run_id: int
+    faculty_id: int
+    faculty_head_id: int
+    status: str  # pending | approved | rejected
+    comment: Optional[str]
+    decided_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}
+
+
+class RejectRequest(BaseModel):
+    comment: str
