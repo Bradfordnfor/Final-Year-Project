@@ -429,6 +429,130 @@ class _FacultySetupScreenState extends State<FacultySetupScreen> {
     }
   }
 
+  // ── Department bottom sheet ───────────────────────────────────────────────────
+
+  Future<void> _showFacultyDepartments(Faculty faculty) async {
+    List<Map<String, dynamic>> departments = [];
+    bool loading = true;
+    String? error;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) {
+          if (loading) {
+            Future.microtask(() async {
+              try {
+                final client = ApiClient(token: AuthController.to.token);
+                final resp = await client.get(
+                    '/faculty-setup/tree?faculty_id=${faculty.id}');
+                final tree = resp.data as Map<String, dynamic>;
+                final depts = (tree['departments'] as List<dynamic>? ?? []);
+                setS(() {
+                  departments = depts.cast<Map<String, dynamic>>();
+                  loading = false;
+                });
+              } catch (e) {
+                setS(() {
+                  error = e.toString();
+                  loading = false;
+                });
+              }
+            });
+          }
+
+          return DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.5,
+            maxChildSize: 0.85,
+            builder: (_, scroll) {
+              final cs = Theme.of(ctx).colorScheme;
+              return Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: cs.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.school_outlined,
+                            color: cs.primary, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(faculty.name,
+                                  style: Theme.of(ctx)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(
+                                          fontWeight: FontWeight.bold)),
+                              Text(faculty.code,
+                                  style: TextStyle(
+                                      color: cs.outline, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(),
+                  if (loading)
+                    const Expanded(
+                        child: Center(child: CircularProgressIndicator()))
+                  else if (error != null)
+                    Expanded(
+                        child: Center(
+                            child: Text('Error: $error',
+                                style: TextStyle(color: cs.error))))
+                  else if (departments.isEmpty)
+                    Expanded(
+                      child: Center(
+                        child: Text('No departments in this faculty.',
+                            style: TextStyle(color: cs.outline)),
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: ListView.separated(
+                        controller: scroll,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        itemCount: departments.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final d = departments[i];
+                          return ListTile(
+                            leading: Icon(Icons.folder_outlined,
+                                color: cs.primary),
+                            title: Text(d['name'] as String),
+                            subtitle: Text(d['code'] as String),
+                            dense: true,
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────────
 
   @override
@@ -486,6 +610,7 @@ class _FacultySetupScreenState extends State<FacultySetupScreen> {
                 delegate: SliverChildBuilderDelegate(
                   (_, i) => _FacultyTile(
                     faculty: _faculties[i],
+                    onTap: () => _showFacultyDepartments(_faculties[i]),
                     onDelete: () => _deleteFaculty(_faculties[i]),
                   ),
                   childCount: _faculties.length,
@@ -767,10 +892,6 @@ class _FacultyTile extends StatelessWidget {
             style: TextStyle(
                 fontWeight: FontWeight.w600,
                 color: isSelected ? cs.onPrimaryContainer : null)),
-        subtitle: Text('${faculty.sessionsPerWeek} sessions/week',
-            style: TextStyle(
-                fontSize: 12,
-                color: isSelected ? cs.onPrimaryContainer : cs.outline)),
         onTap: onTap,
         trailing: IconButton(
           icon: Icon(Icons.delete_outline, color: cs.error, size: 20),

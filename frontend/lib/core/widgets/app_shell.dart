@@ -12,19 +12,22 @@ class AppShell extends StatelessWidget {
 
   // Primary items (main nav bar / rail) — role-filtered in build
   static final _primary = [
+    // System admin only: university management
+    _Dest(
+      icon: Icons.account_balance_outlined, activeIcon: Icons.account_balance,
+      label: 'Universities', route: AppRoutes.universities,
+      visible: (u) => u.isSuperAdmin,
+    ),
+    // Regular users
     _Dest(
       icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard,
       label: 'Dashboard', route: AppRoutes.dashboard,
+      visible: (u) => !u.isSuperAdmin,
     ),
     _Dest(
       icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month,
       label: 'Timetable', route: AppRoutes.timetable,
-      visible: (u) => !u.isStudent,
-    ),
-    _Dest(
-      icon: Icons.auto_fix_high_outlined, activeIcon: Icons.auto_fix_high,
-      label: 'Generate', route: AppRoutes.generation,
-      visible: (u) => u.canManageTimetable,
+      visible: (u) => !u.isStudent && !u.isSuperAdmin,
     ),
     _Dest(
       icon: Icons.manage_accounts_outlined, activeIcon: Icons.manage_accounts,
@@ -53,6 +56,7 @@ class AppShell extends StatelessWidget {
     _Dest(
       icon: Icons.notifications_outlined, activeIcon: Icons.notifications,
       label: 'Notifications', route: AppRoutes.notifications,
+      visible: (u) => !u.isSuperAdmin,
     ),
     _Dest(
       icon: Icons.upload_file_outlined, activeIcon: Icons.upload_file,
@@ -62,6 +66,7 @@ class AppShell extends StatelessWidget {
     _Dest(
       icon: Icons.public_outlined, activeIcon: Icons.public,
       label: 'Public View', route: AppRoutes.publicTimetable,
+      visible: (u) => !u.isSuperAdmin,
     ),
   ];
 
@@ -162,11 +167,11 @@ class _SidebarLayout extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('TimeTable', style: tt.titleSmall?.copyWith(
+                              Text('UniFord', style: tt.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w800,
                                 color: cs.onSurface,
                               )),
-                              Text('University of Buea', style: tt.labelSmall?.copyWith(
+                              Text('Timetabling System', style: tt.labelSmall?.copyWith(
                                 color: cs.outline,
                               )),
                             ],
@@ -400,7 +405,7 @@ class _BottomNavLayout extends StatelessWidget {
           children: [
             Icon(Icons.school, color: Theme.of(context).colorScheme.primary, size: 22),
             const SizedBox(width: 8),
-            const Text('UB Timetabling'),
+            const Text('UniFord'),
           ],
         ),
         actions: [

@@ -106,4 +106,28 @@ class TimetableApi {
     final response = await _client.downloadFile('/export/runs/$runId/$format');
     return List<int>.from(response.data as List);
   }
+
+  Future<TimetableRun> submitForReview(int runId) async {
+    final response = await _client.post('/runs/$runId/submit-for-review');
+    return TimetableRun.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<List<FacultyApproval>> getApprovals(int runId) async {
+    final response = await _client.get('/runs/$runId/approvals');
+    return (response.data as List)
+        .map((e) => FacultyApproval.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<FacultyApproval> approveFaculty(int runId, int approvalId) async {
+    final response = await _client.post('/runs/$runId/approvals/$approvalId/approve');
+    return FacultyApproval.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> rejectFaculty(int runId, int approvalId, String comment) async {
+    await _client.post(
+      '/runs/$runId/approvals/$approvalId/reject',
+      data: {'comment': comment},
+    );
+  }
 }

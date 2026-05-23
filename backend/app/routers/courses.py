@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.course import Course, SharedCourse
+from app.models.user import User
 from app.schemas.course import (
     CourseCreate, CourseUpdate, CourseOut,
     SharedCourseCreate, SharedCourseOut,
@@ -15,9 +16,27 @@ router = APIRouter(tags=["Courses"])
 def create_course(
     payload: CourseCreate,
     db: Session = Depends(get_db),
-    _=Depends(require_timetable_officer),
+    current_user: User = Depends(get_current_user),
 ):
-    obj = Course(**payload.model_dump())
+    if current_user.role not in ("super_admin", "university_admin", "timetable_officer"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    data = payload.model_dump()
+
+    if current_user.role == "university_admin":
+        # University admin adds university-wide requirements only
+        data["university_id"] = current_user.university_id
+        data["department_id"] = None
+        data["level_id"] = None
+    else:
+        # Timetable officer / super_admin: department_id is required
+        if data.get("department_id") is None and data.get("university_id") is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Provide either department_id (dept-specific course) or university_id (university-wide course)",
+            )
+
+    obj = Course(**data)
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -28,14 +47,16 @@ def create_course(
 def list_courses(
     level_id: int | None = None,
     department_id: int | None = None,
+    university_id: int | None = None,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
 ):
     q = db.query(Course)
     if level_id is not None:
         q = q.filter(Course.level_id == level_id)
     if department_id is not None:
         q = q.filter(Course.department_id == department_id)
+    if university_id is not None:
+        q = q.filter(Course.university_id == university_id)
     return q.all()
 
 
@@ -68,8 +89,10 @@ def update_course(
 def delete_course(
     course_id: int,
     db: Session = Depends(get_db),
-    _=Depends(require_timetable_officer),
+    current_user: User = Depends(get_current_user),
 ):
+    if current_user.role not in ("super_admin", "university_admin", "timetable_officer"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
     obj = db.get(Course, course_id)
     if not obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")

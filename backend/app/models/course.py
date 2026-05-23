@@ -9,17 +9,19 @@ class Course(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(20))
-    # Formal academic code e.g. "ENG 116", "CSC 201"
     name: Mapped[str] = mapped_column(String(200))
     room_type_required: Mapped[str] = mapped_column(String(20), default="lecture_hall")
     # lecture_hall | lab | studio
-    level_id: Mapped[int] = mapped_column(ForeignKey("levels.id"))
-    department_id: Mapped[int] = mapped_column(ForeignKey("departments.id"))
+    level_id: Mapped[Optional[int]] = mapped_column(ForeignKey("levels.id"), nullable=True)
+    department_id: Mapped[Optional[int]] = mapped_column(ForeignKey("departments.id"), nullable=True)
+    university_id: Mapped[Optional[int]] = mapped_column(ForeignKey("universities.id"), nullable=True)
+    # university_id is set for university-wide courses (no department)
     lecturer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("lecturers.id"), nullable=True)
     weekly_hours: Mapped[int] = mapped_column(Integer, default=2)
 
-    level: Mapped["Level"] = relationship()
-    department: Mapped["Department"] = relationship(back_populates="courses")
+    level: Mapped[Optional["Level"]] = relationship()
+    department: Mapped[Optional["Department"]] = relationship(back_populates="courses")
+    university: Mapped[Optional["University"]] = relationship()
     lecturer: Mapped[Optional["Lecturer"]] = relationship()
     shared_with: Mapped[list["SharedCourse"]] = relationship(
         back_populates="course", cascade="all, delete-orphan"
@@ -27,7 +29,6 @@ class Course(Base):
 
 
 class SharedCourse(Base):
-    """Records that a course is shared between multiple classes."""
     __tablename__ = "shared_courses"
 
     id: Mapped[int] = mapped_column(primary_key=True)

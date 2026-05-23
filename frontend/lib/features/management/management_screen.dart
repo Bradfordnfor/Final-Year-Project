@@ -956,12 +956,32 @@ class _SemestersTabState extends State<_SemestersTab> {
     _load();
   }
 
-  Future<void> _deleteTimeSlot(int id) async {
+  Future<void> _deleteTimeSlots(List<int> ids) async {
+    // Optimistic local update — no loading spinner so cards stay expanded
+    setState(() {
+      for (final semId in _slots.keys) {
+        _slots[semId] = _slots[semId]!.where((s) => !ids.contains(s.id)).toList();
+      }
+    });
     try {
-      await _api.deleteTimeSlot(id);
-      _load();
+      for (final id in ids) {
+        await _api.deleteTimeSlot(id);
+      }
+      // Silent background sync
+      final sems = await _api.getSemesters();
+      final slotResults = await Future.wait(sems.map((s) => _api.getTimeSlots(s.id)));
+      if (mounted) {
+        setState(() {
+          _semesters = sems;
+          _slots.clear();
+          for (var i = 0; i < sems.length; i++) {
+            _slots[sems[i].id] = slotResults[i];
+          }
+        });
+      }
     } catch (e) {
-      Get.snackbar('Error', 'Failed: $e', snackPosition: SnackPosition.BOTTOM);
+      Get.snackbar('Error', 'Failed to delete: $e', snackPosition: SnackPosition.BOTTOM);
+      _load();
     }
   }
 
@@ -996,11 +1016,12 @@ class _SemestersTabState extends State<_SemestersTab> {
               itemBuilder: (_, i) {
                 final s = _semesters[i];
                 return _SemesterCard(
+                  key: ValueKey(s.id),
                   semester: s,
                   slots: _slots[s.id] ?? [],
                   onDelete: () => _deleteSemester(s),
                   onAddSlot: () => _addTimeSlots(s.id),
-                  onDeleteSlot: _deleteTimeSlot,
+                  onDeleteSlots: _deleteTimeSlots,
                 ).animate(delay: Duration(milliseconds: i * 40)).fadeIn(duration: 200.ms);
               },
             ),
@@ -1013,12 +1034,13 @@ class _SemesterCard extends StatefulWidget {
   final List<TimeSlot> slots;
   final VoidCallback onDelete;
   final VoidCallback onAddSlot;
-  final Future<void> Function(int) onDeleteSlot;
+  final Future<void> Function(List<int>) onDeleteSlots;
 
   const _SemesterCard({
+    super.key,
     required this.semester, required this.slots,
     required this.onDelete, required this.onAddSlot,
-    required this.onDeleteSlot,
+    required this.onDeleteSlots,
   });
 
   @override
@@ -1027,6 +1049,26 @@ class _SemesterCard extends StatefulWidget {
 
 class _SemesterCardState extends State<_SemesterCard> {
   bool _expanded = false;
+  bool _selecting = false;
+  final Set<int> _selected = {};
+
+  void _toggleSelect(int id) {
+    setState(() {
+      if (_selected.contains(id)) {
+        _selected.remove(id);
+      } else {
+        _selected.add(id);
+      }
+    });
+  }
+
+  void _exitSelect() => setState(() { _selecting = false; _selected.clear(); });
+
+  Future<void> _deleteSelected() async {
+    final ids = _selected.toList();
+    _exitSelect();
+    await widget.onDeleteSlots(ids);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1048,6 +1090,7 @@ class _SemesterCardState extends State<_SemesterCard> {
       margin: const EdgeInsets.only(bottom: 8),
       child: Column(
         children: [
+          // ── Card header ───────────────────────────────────────────────────
           InkWell(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             onTap: () => setState(() => _expanded = !_expanded),
@@ -1104,7 +1147,7 @@ class _SemesterCardState extends State<_SemesterCard> {
                   IconButton(
                     icon: const Icon(Icons.add_circle_outline, size: 20),
                     onPressed: widget.onAddSlot,
-                    tooltip: 'Add Time Slot',
+                    tooltip: 'Add Time Slots',
                   ),
                   IconButton(
                     icon: Icon(Icons.delete_outline, size: 20, color: cs.error),
@@ -1117,44 +1160,113 @@ class _SemesterCardState extends State<_SemesterCard> {
               ),
             ),
           ),
+
+          // ── Expanded slot list ────────────────────────────────────────────
           if (_expanded) ...[
             Divider(color: cs.outlineVariant, height: 1),
             if (slots.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text('No time slots yet — tap + to add one',
+                child: Text('No time slots yet — tap + to add',
                     style: TextStyle(color: cs.outline, fontSize: 13)),
               )
-            else
+            else ...[
+              // Selection toolbar
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+                child: Row(
+                  children: [
+                    if (_selecting) ...[
+                      Text(
+                        _selected.isEmpty
+                            ? 'Select slots to delete'
+                            : '${_selected.length} selected',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: _selected.isEmpty ? cs.outline : cs.primary,
+                            fontWeight: FontWeight.w600),
+                      ),
+                      const Spacer(),
+                      if (_selected.isNotEmpty)
+                        FilledButton.tonalIcon(
+                          onPressed: _deleteSelected,
+                          icon: const Icon(Icons.delete_outline, size: 16),
+                          label: Text('Delete ${_selected.length}'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: cs.errorContainer,
+                            foregroundColor: cs.onErrorContainer,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: _exitSelect,
+                        style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact),
+                        child: const Text('Cancel'),
+                      ),
+                    ] else ...[
+                      const Spacer(),
+                      TextButton.icon(
+                        onPressed: () => setState(() => _selecting = true),
+                        icon: const Icon(Icons.checklist_outlined, size: 16),
+                        label: const Text('Select',
+                            style: TextStyle(fontSize: 12)),
+                        style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
               ...activeDays.map((day) {
                 final daySlots = byDay[day]!;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
                       child: Text(day,
                           style: TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 12,
                               color: cs.secondary)),
                     ),
-                    ...daySlots.map((slot) => ListTile(
-                          contentPadding: const EdgeInsets.fromLTRB(32, 0, 8, 0),
-                          dense: true,
-                          leading: Icon(Icons.schedule_outlined,
-                              size: 16, color: cs.outline),
-                          title: Text(slot.label,
-                              style: const TextStyle(fontSize: 13)),
-                          trailing: IconButton(
-                            icon: Icon(Icons.delete_outline,
-                                color: cs.error, size: 18),
-                            onPressed: () => widget.onDeleteSlot(slot.id),
-                          ),
-                        )),
+                    ...daySlots.map((slot) {
+                      final isChecked = _selected.contains(slot.id);
+                      return ListTile(
+                        contentPadding: EdgeInsets.fromLTRB(
+                            _selecting ? 8 : 32, 0, 8, 0),
+                        dense: true,
+                        leading: _selecting
+                            ? Checkbox(
+                                value: isChecked,
+                                onChanged: (_) => _toggleSelect(slot.id),
+                              )
+                            : Icon(Icons.schedule_outlined,
+                                size: 16, color: cs.outline),
+                        title: Text(slot.label,
+                            style: const TextStyle(fontSize: 13)),
+                        selected: isChecked,
+                        selectedTileColor: cs.errorContainer.withAlpha(80),
+                        onTap: _selecting
+                            ? () => _toggleSelect(slot.id)
+                            : null,
+                        trailing: _selecting
+                            ? null
+                            : IconButton(
+                                icon: Icon(Icons.delete_outline,
+                                    color: cs.error, size: 18),
+                                onPressed: () =>
+                                    widget.onDeleteSlots([slot.id]),
+                              ),
+                      );
+                    }),
                   ],
                 );
               }),
+              const SizedBox(height: 8),
+            ],
           ],
         ],
       ),
@@ -1176,6 +1288,7 @@ class _CoursesTabState extends State<_CoursesTab> {
   List<Course> _courses = [];
   bool _loading = true;
   String _search = '';
+  String? _universityName;
 
   static const _roomTypes = ['lecture_hall', 'lab', 'outdoor'];
 
@@ -1218,67 +1331,325 @@ class _CoursesTabState extends State<_CoursesTab> {
   }
 
   Future<void> _showAddSheet() async {
+    final user = AuthController.to.user.value;
+    final isUniversityAdmin = user?.isUniversityAdmin ?? false;
+
+    if (!isUniversityAdmin) {
+      await _showAddSheetForOfficer();
+      return;
+    }
+
+    // University admin: university-wide requirements only
     final codeCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
+    final hoursCtrl = TextEditingController(text: '2');
     String selectedType = _roomTypes.first;
+
+    // Load university name for banner
+    try {
+      final uApi = UniversityApi(ApiClient(token: AuthController.to.token));
+      final unis = await uApi.getUniversities();
+      final uid = user?.universityId;
+      if (uid != null) {
+        for (final u in unis) {
+          if (u.id == uid) {
+            setState(() => _universityName = u.name);
+            break;
+          }
+        }
+      }
+    } catch (_) {}
+    final String universityLabel = _universityName ?? 'your university';
 
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
           left: 24, right: 24, top: 24,
           bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
         ),
         child: StatefulBuilder(
-          builder: (ctx, setSheet) => Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Add Course', style: Theme.of(ctx).textTheme.titleLarge),
-              const SizedBox(height: 16),
-              TextField(
-                controller: codeCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'Course Code (e.g. CSC 201)',
-                    border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'Course Name', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: selectedType,
-                decoration: const InputDecoration(
-                    labelText: 'Room Type Required',
-                    border: OutlineInputBorder()),
-                items: _roomTypes.map((t) => DropdownMenuItem(
-                  value: t, child: Text(t.replaceAll('_', ' ')),
-                )).toList(),
-                onChanged: (v) => setSheet(() => selectedType = v!),
-              ),
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: () async {
-                  try {
-                    await _api.createCourse({
-                      'code': codeCtrl.text.trim(),
-                      'name': nameCtrl.text.trim(),
-                      'room_type_required': selectedType,
-                    });
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    await _load();
-                  } catch (e) {
-                    Get.snackbar('Error', 'Failed: $e');
-                  }
-                },
-                child: const Text('Add Course'),
-              ),
-            ],
+          builder: (ctx, setSheet) => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(children: [
+                  Text('Add Course', style: Theme.of(ctx).textTheme.titleLarge),
+                  const Spacer(),
+                  IconButton(icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx)),
+                ]),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(ctx).colorScheme.primaryContainer.withAlpha(120),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: Theme.of(ctx).colorScheme.primary.withAlpha(60)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline,
+                          color: Theme.of(ctx).colorScheme.primary, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'You are adding $universityLabel Requirements — courses all students must complete, regardless of faculty or department.',
+                          style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(ctx).colorScheme.onPrimaryContainer),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: codeCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'Course Code *',
+                      hintText: 'e.g. ENG101',
+                      border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'Course Name *',
+                      border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                    flex: 2,
+                    child: DropdownButtonFormField<String>(
+                      value: selectedType,
+                      decoration: const InputDecoration(
+                          labelText: 'Room Type', border: OutlineInputBorder()),
+                      items: _roomTypes.map((t) => DropdownMenuItem(
+                        value: t, child: Text(t.replaceAll('_', ' ')),
+                      )).toList(),
+                      onChanged: (v) => setSheet(() => selectedType = v!),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: hoursCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                          labelText: 'Hrs/week', border: OutlineInputBorder()),
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: codeCtrl.text.trim().isEmpty ||
+                          nameCtrl.text.trim().isEmpty
+                      ? null
+                      : () async {
+                          try {
+                            await _api.createCourse({
+                              'code': codeCtrl.text.trim(),
+                              'name': nameCtrl.text.trim(),
+                              'room_type_required': selectedType,
+                              'weekly_hours': int.tryParse(hoursCtrl.text) ?? 2,
+                            });
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            await _load();
+                          } catch (e) {
+                            Get.snackbar('Error', 'Failed: $e');
+                          }
+                        },
+                  child: const Text('Add Course'),
+                ),
+              ],
+            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAddSheetForOfficer() async {
+    final codeCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    final hoursCtrl = TextEditingController(text: '2');
+    String selectedType = _roomTypes.first;
+
+    // Load faculty/dept/level data once before opening the sheet
+    List<Faculty> faculties = [];
+    List<Department> departments = [];
+    List<Level> levels = [];
+    try {
+      final uApi = UniversityApi(ApiClient(token: AuthController.to.token));
+      final aApi = AcademicApi(ApiClient(token: AuthController.to.token));
+      final results = await Future.wait([
+        uApi.getFaculties(), uApi.getDepartments(), aApi.getLevels(),
+      ]);
+      faculties = results[0] as List<Faculty>;
+      departments = results[1] as List<Department>;
+      levels = results[2] as List<Level>;
+    } catch (e) {
+      Get.snackbar('Error', 'Could not load faculties/departments: $e');
+      return;
+    }
+
+    Faculty? selFaculty;
+    Department? selDept;
+    Level? selLevel;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 24, right: 24, top: 24,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
+        child: StatefulBuilder(
+          builder: (ctx, setSheet) {
+            final deptOptions = selFaculty == null
+                ? <Department>[]
+                : departments.where((d) => d.facultyId == selFaculty!.id).toList();
+            final levelOptions = selDept == null
+                ? <Level>[]
+                : levels.where((l) => l.departmentId == selDept!.id).toList();
+
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [
+                    Text('Add Course', style: Theme.of(ctx).textTheme.titleLarge),
+                    const Spacer(),
+                    IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx)),
+                  ]),
+                  const SizedBox(height: 16),
+
+                  // Faculty → Department → Level cascade
+                  DropdownButtonFormField<Faculty>(
+                    value: selFaculty,
+                    decoration: const InputDecoration(
+                        labelText: 'Faculty *', border: OutlineInputBorder()),
+                    items: faculties.map((f) => DropdownMenuItem(
+                      value: f, child: Text('${f.code} — ${f.name}'),
+                    )).toList(),
+                    onChanged: (v) => setSheet(() {
+                      selFaculty = v;
+                      selDept = null;
+                      selLevel = null;
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<Department>(
+                    value: selDept,
+                    decoration: InputDecoration(
+                        labelText: 'Department *',
+                        border: const OutlineInputBorder(),
+                        enabled: selFaculty != null),
+                    items: deptOptions.map((d) => DropdownMenuItem(
+                      value: d, child: Text('${d.code} — ${d.name}'),
+                    )).toList(),
+                    onChanged: selFaculty == null ? null : (v) => setSheet(() {
+                      selDept = v;
+                      selLevel = null;
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<Level>(
+                    value: selLevel,
+                    decoration: InputDecoration(
+                        labelText: 'Level *',
+                        border: const OutlineInputBorder(),
+                        enabled: selDept != null),
+                    items: levelOptions.map((l) => DropdownMenuItem(
+                      value: l, child: Text(l.label),
+                    )).toList(),
+                    onChanged: selDept == null ? null : (v) =>
+                        setSheet(() => selLevel = v),
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextField(
+                    controller: codeCtrl,
+                    decoration: const InputDecoration(
+                        labelText: 'Course Code *',
+                        hintText: 'e.g. CSC 201',
+                        border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                        labelText: 'Course Name *',
+                        border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    Expanded(
+                      flex: 2,
+                      child: DropdownButtonFormField<String>(
+                        value: selectedType,
+                        decoration: const InputDecoration(
+                            labelText: 'Room Type',
+                            border: OutlineInputBorder()),
+                        items: _roomTypes.map((t) => DropdownMenuItem(
+                          value: t, child: Text(t.replaceAll('_', ' ')),
+                        )).toList(),
+                        onChanged: (v) => setSheet(() => selectedType = v!),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: hoursCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                            labelText: 'Hrs/week',
+                            border: OutlineInputBorder()),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 20),
+                  FilledButton(
+                    onPressed: selLevel == null ||
+                            codeCtrl.text.trim().isEmpty ||
+                            nameCtrl.text.trim().isEmpty
+                        ? null
+                        : () async {
+                            try {
+                              await _api.createCourse({
+                                'code': codeCtrl.text.trim(),
+                                'name': nameCtrl.text.trim(),
+                                'room_type_required': selectedType,
+                                'department_id': selDept!.id,
+                                'level_id': selLevel!.id,
+                                'weekly_hours':
+                                    int.tryParse(hoursCtrl.text) ?? 2,
+                              });
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              await _load();
+                            } catch (e) {
+                              Get.snackbar('Error', 'Failed: $e');
+                            }
+                          },
+                    child: const Text('Add Course'),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );

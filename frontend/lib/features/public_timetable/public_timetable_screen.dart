@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/api/course_api.dart';
 import '../../core/api/timetable_api.dart';
 import '../../core/api/academic_api.dart';
+import '../../core/api/university_api.dart';
 import '../../core/models/academic.dart';
+import '../../core/models/course.dart';
+import '../../core/models/room.dart';
 import '../../core/models/timetable.dart';
 
 class PublicTimetableScreen extends StatefulWidget {
@@ -18,6 +22,8 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
   TimetableRun? _selectedRun;
   List<TimetableEntry> _entries = [];
   List<TimeSlot> _timeSlots = [];
+  Map<int, String> _courseNames = {};
+  Map<int, String> _roomNames = {};
   bool _loading = true;
   bool _loadingEntries = false;
 
@@ -33,7 +39,16 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
   Future<void> _loadPublished() async {
     setState(() => _loading = true);
     try {
-      _runs = await TimetableApi(_client).getPublishedRuns();
+      final results = await Future.wait([
+        TimetableApi(_client).getPublishedRuns(),
+        CourseApi(_client).getCourses(),
+        UniversityApi(_client).getRooms(),
+      ]);
+      _runs = results[0] as List<TimetableRun>;
+      final courses = results[1] as List<Course>;
+      final rooms = results[2] as List<Room>;
+      _courseNames = {for (final c in courses) c.id: '${c.code} — ${c.name}'};
+      _roomNames = {for (final r in rooms) r.id: r.name};
     } catch (_) {
       _runs = [];
     }
@@ -41,7 +56,12 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
   }
 
   Future<void> _selectRun(TimetableRun run) async {
-    setState(() { _selectedRun = run; _loadingEntries = true; });
+    setState(() {
+      _selectedRun = run;
+      _loadingEntries = true;
+      _entries = [];
+      _timeSlots = [];
+    });
     try {
       final api = TimetableApi(_client);
       final academicApi = AcademicApi(_client);
@@ -53,8 +73,14 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
         _entries = results[0] as List<TimetableEntry>;
         _timeSlots = results[1] as List<TimeSlot>;
       });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load timetable: $e')),
+        );
+      }
     } finally {
-      setState(() => _loadingEntries = false);
+      if (mounted) setState(() => _loadingEntries = false);
     }
   }
 
@@ -119,6 +145,8 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
                           timeSlots: _timeSlots,
                           loading: _loadingEntries,
                           days: _days,
+                          courseNames: _courseNames,
+                          roomNames: _roomNames,
                         )),
                       ],
                     )
@@ -143,6 +171,8 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
                               timeSlots: _timeSlots,
                               loading: _loadingEntries,
                               days: _days,
+                              courseNames: _courseNames,
+                              roomNames: _roomNames,
                             )),
                           ],
                         ),
@@ -219,10 +249,13 @@ class _TimetableView extends StatelessWidget {
   final List<TimeSlot> timeSlots;
   final bool loading;
   final List<String> days;
+  final Map<int, String> courseNames;
+  final Map<int, String> roomNames;
 
   const _TimetableView({
     required this.run, required this.entries, required this.timeSlots,
     required this.loading, required this.days,
+    this.courseNames = const {}, this.roomNames = const {},
   });
 
   @override
@@ -256,7 +289,7 @@ class _TimetableView extends StatelessWidget {
         ..sort((a, b) => a.startTime.compareTo(b.startTime));
     }
     final entryBySlot = <int, TimetableEntry>{};
-    for (final e in entries) entryBySlot[e.timeSlotId] = e;
+    for (final e in entries) { entryBySlot[e.timeSlotId] = e; }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -298,7 +331,10 @@ class _TimetableView extends StatelessWidget {
                       ),
                       ...slots.map((ts) {
                         final entry = entryBySlot[ts.id];
-                        return _PublicSlotCell(timeSlot: ts, entry: entry);
+                        return _PublicSlotCell(
+                          timeSlot: ts, entry: entry,
+                          courseNames: courseNames, roomNames: roomNames,
+                        );
                       }),
                     ],
                   ),
@@ -315,7 +351,13 @@ class _TimetableView extends StatelessWidget {
 class _PublicSlotCell extends StatelessWidget {
   final TimeSlot timeSlot;
   final TimetableEntry? entry;
-  const _PublicSlotCell({required this.timeSlot, this.entry});
+  final Map<int, String> courseNames;
+  final Map<int, String> roomNames;
+
+  const _PublicSlotCell({
+    required this.timeSlot, this.entry,
+    this.courseNames = const {}, this.roomNames = const {},
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -342,10 +384,16 @@ class _PublicSlotCell extends StatelessWidget {
               style: TextStyle(fontSize: 10, color: cs.outline)),
           if (has) ...[
             const SizedBox(height: 4),
-            Text('Course #${entry!.courseId}',
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-            Text('Room #${entry!.roomId}',
-                style: TextStyle(fontSize: 11, color: cs.outline)),
+            Text(
+              courseNames[entry!.courseId] ?? 'Course #${entry!.courseId}',
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              roomNames[entry!.roomId] ?? 'Room #${entry!.roomId}',
+              style: TextStyle(fontSize: 11, color: cs.outline),
+            ),
           ],
         ],
       ),

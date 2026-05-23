@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel
 
 
@@ -7,6 +8,17 @@ class UniversityCreate(BaseModel):
     overflow_threshold: float = 0.20
 
 
+class UniversityWithAdminCreate(BaseModel):
+    # University
+    name: str
+    slug: str
+    overflow_threshold: float = 0.20
+    # First admin account
+    admin_full_name: str
+    admin_email: str
+    admin_password: str
+
+
 class UniversityOut(BaseModel):
     id: int
     name: str
@@ -14,6 +26,16 @@ class UniversityOut(BaseModel):
     overflow_threshold: float
 
     model_config = {"from_attributes": True}
+
+
+class UniversityCreateResponse(BaseModel):
+    id: int
+    name: str
+    slug: str
+    overflow_threshold: float
+    admin_id: int
+    admin_email: str
+    admin_full_name: str
 
 
 class FacultyCreate(BaseModel):

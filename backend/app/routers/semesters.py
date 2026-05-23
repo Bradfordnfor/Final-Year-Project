@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.academic import Semester, TimeSlot
+from app.models.timetable import TimetableRun
 from app.schemas.academic import (
     SemesterCreate, SemesterUpdate, SemesterOut,
     TimeSlotCreate, TimeSlotOut,
@@ -63,6 +64,11 @@ def delete_semester(
     obj = db.get(Semester, semester_id)
     if not obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Semester not found")
+    # Delete timetable runs for this semester (their children cascade via ORM)
+    for run in db.query(TimetableRun).filter(TimetableRun.semester_id == semester_id).all():
+        db.delete(run)
+    # Delete time slots
+    db.query(TimeSlot).filter(TimeSlot.semester_id == semester_id).delete(synchronize_session=False)
     db.delete(obj)
     db.commit()
 
@@ -84,7 +90,6 @@ def create_timeslot(
 def list_timeslots(
     semester_id: int,
     db: Session = Depends(get_db),
-    _=Depends(get_current_user),
 ):
     return db.query(TimeSlot).filter(TimeSlot.semester_id == semester_id).all()
 

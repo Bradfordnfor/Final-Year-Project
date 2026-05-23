@@ -13,6 +13,15 @@ class UniversityApi {
         .toList();
   }
 
+  Future<University> createUniversity(Map<String, dynamic> data) async {
+    final response = await _client.post('/universities/', data: data);
+    return University.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteUniversity(int id) async {
+    await _client.delete('/universities/$id');
+  }
+
   Future<List<Faculty>> getFaculties() async {
     final response = await _client.get('/faculties/');
     return (response.data as List)
@@ -57,5 +66,16 @@ class UniversityApi {
 
   Future<void> deleteRoom(int id) async {
     await _client.delete('/rooms/$id');
+  }
+
+  Future<Map<String, dynamic>> createUniversityWithAdmin(
+      Map<String, dynamic> data) async {
+    final response = await _client.post('/universities/', data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getUniversityStructure(int id) async {
+    final response = await _client.get('/universities/$id/structure');
+    return response.data as Map<String, dynamic>;
   }
 }

@@ -7,21 +7,21 @@ from app.models.timetable import (
     TimetableRun, TimetableRunFaculty, TimetableRunBuilding,
     TimetableEntry, TimetableEntryClass,
     TimetableConflict, GenerationJob, Notification,
+    FacultyHeadApproval,
 )
 from app.models.user import User
 from app.schemas.timetable import (
     RunCreate, RunResponse, TimetableEntryResponse,
     TimetableConflictResponse, ConflictResolutionRequest,
     GenerationJobResponse, ManualSlotMoveRequest, NotificationResponse,
+    FacultyApprovalOut, RejectRequest,
 )
 from app.core.permissions import (
-    get_current_user, require_university_admin,
+    get_current_user,
     require_faculty_head, require_timetable_officer,
 )
 
 router = APIRouter(tags=["Timetable Runs"])
-
-STATUS_FLOW = ["draft", "under_review", "approved", "published"]
 
 
 def _run_to_response(run: TimetableRun) -> RunResponse:
@@ -121,41 +121,194 @@ def get_conflicts(run_id: int, db: Session = Depends(get_db), _: User = Depends(
     ).all()
 
 
-@router.post("/runs/{run_id}/advance-status", response_model=RunResponse)
-def advance_status(
+# ── Status transitions ────────────────────────────────────────────────────────
+
+@router.post("/runs/{run_id}/submit-for-review", response_model=RunResponse)
+def submit_for_review(
     run_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_timetable_officer),
+    current_user: User = Depends(require_timetable_officer),
+):
+    """Timetable officer submits a draft run for faculty-head review."""
+    run = db.get(TimetableRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Timetable run not found")
+    if run.status != "draft":
+        raise HTTPException(status_code=400, detail="Only draft runs can be submitted for review")
+
+    # Ensure every faculty in the run has a faculty head
+    for run_faculty in run.faculties:
+        head = db.query(User).filter(
+            User.role == "faculty_head",
+            User.faculty_id == run_faculty.faculty_id,
+            User.is_active == True,  # noqa: E712
+        ).first()
+        if not head:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Faculty {run_faculty.faculty_id} has no active faculty head. Assign one before submitting for review.",
+            )
+
+    # Create or reset approval records
+    for run_faculty in run.faculties:
+        head = db.query(User).filter(
+            User.role == "faculty_head",
+            User.faculty_id == run_faculty.faculty_id,
+            User.is_active == True,  # noqa: E712
+        ).first()
+        existing = db.query(FacultyHeadApproval).filter(
+            FacultyHeadApproval.run_id == run_id,
+            FacultyHeadApproval.faculty_id == run_faculty.faculty_id,
+        ).first()
+        if existing:
+            existing.status = "pending"
+            existing.comment = None
+            existing.decided_at = None
+            existing.faculty_head_id = head.id
+        else:
+            db.add(FacultyHeadApproval(
+                run_id=run_id,
+                faculty_id=run_faculty.faculty_id,
+                faculty_head_id=head.id,
+                status="pending",
+            ))
+
+        db.add(Notification(
+            user_id=head.id,
+            message=f"Timetable run '{run.name}' has been submitted for your review.",
+            notification_type="timetable_review",
+        ))
+
+    run.status = "under_review"
+    db.commit()
+    db.refresh(run)
+    return _run_to_response(run)
+
+
+@router.get("/runs/{run_id}/approvals", response_model=list[FacultyApprovalOut])
+def get_approvals(
+    run_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
 ):
     run = db.get(TimetableRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Timetable run not found")
-    current_idx = STATUS_FLOW.index(run.status) if run.status in STATUS_FLOW else -1
-    if current_idx >= len(STATUS_FLOW) - 1:
-        raise HTTPException(status_code=400, detail="Timetable run is already published")
-    run.status = STATUS_FLOW[current_idx + 1]
+    return db.query(FacultyHeadApproval).filter(
+        FacultyHeadApproval.run_id == run_id
+    ).all()
+
+
+@router.post("/runs/{run_id}/approvals/{approval_id}/approve", response_model=FacultyApprovalOut)
+def approve_run(
+    run_id: int,
+    approval_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_faculty_head),
+):
+    """Faculty head approves their faculty's section."""
+    approval = db.query(FacultyHeadApproval).filter(
+        FacultyHeadApproval.id == approval_id,
+        FacultyHeadApproval.run_id == run_id,
+    ).first()
+    if not approval:
+        raise HTTPException(status_code=404, detail="Approval record not found")
+    if approval.faculty_head_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only approve your own faculty's section")
+    if approval.status != "pending":
+        raise HTTPException(status_code=400, detail="This approval has already been decided")
+
+    run = db.get(TimetableRun, run_id)
+    if not run or run.status != "under_review":
+        raise HTTPException(status_code=400, detail="Run is not under review")
+
+    approval.status = "approved"
+    approval.decided_at = datetime.utcnow()
     db.commit()
-    db.refresh(run)
-    return _run_to_response(run)
+
+    # If every approval is now approved, auto-advance run to approved
+    all_approvals = db.query(FacultyHeadApproval).filter(
+        FacultyHeadApproval.run_id == run_id
+    ).all()
+    if all(a.status == "approved" for a in all_approvals):
+        run.status = "approved"
+        creator = db.get(User, run.created_by)
+        if creator:
+            db.add(Notification(
+                user_id=creator.id,
+                message=f"All faculty heads have approved '{run.name}'. You can now publish it.",
+                notification_type="timetable_approved",
+            ))
+        db.commit()
+
+    db.refresh(approval)
+    return approval
+
+
+@router.post("/runs/{run_id}/approvals/{approval_id}/reject")
+def reject_run(
+    run_id: int,
+    approval_id: int,
+    data: RejectRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_faculty_head),
+):
+    """Faculty head rejects their faculty's section; run goes back to draft."""
+    approval = db.query(FacultyHeadApproval).filter(
+        FacultyHeadApproval.id == approval_id,
+        FacultyHeadApproval.run_id == run_id,
+    ).first()
+    if not approval:
+        raise HTTPException(status_code=404, detail="Approval record not found")
+    if approval.faculty_head_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only reject your own faculty's section")
+    if approval.status != "pending":
+        raise HTTPException(status_code=400, detail="This approval has already been decided")
+
+    run = db.get(TimetableRun, run_id)
+    if not run or run.status != "under_review":
+        raise HTTPException(status_code=400, detail="Run is not under review")
+
+    approval.status = "rejected"
+    approval.comment = data.comment
+    approval.decided_at = datetime.utcnow()
+    run.status = "draft"  # back to draft so timetable officer can fix and resubmit
+    db.commit()
+
+    creator = db.get(User, run.created_by)
+    if creator:
+        db.add(Notification(
+            user_id=creator.id,
+            message=f"Timetable run '{run.name}' was rejected: {data.comment}",
+            notification_type="timetable_rejected",
+        ))
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/runs/{run_id}/publish", response_model=RunResponse)
 def publish_run(
     run_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_faculty_head),
+    _: User = Depends(require_timetable_officer),
 ):
+    """Timetable officer publishes an approved run."""
     run = db.get(TimetableRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Timetable run not found")
     if run.status != "approved":
-        raise HTTPException(status_code=400, detail="Timetable must be approved before publishing")
+        raise HTTPException(
+            status_code=400,
+            detail="All faculty heads must approve the timetable before it can be published",
+        )
     run.status = "published"
     db.commit()
     db.refresh(run)
     _notify_run_published(run, db)
     return _run_to_response(run)
 
+
+# ── Generation ────────────────────────────────────────────────────────────────
 
 @router.get("/runs/{run_id}/job-status", response_model=GenerationJobResponse)
 def get_job_status(run_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
@@ -191,6 +344,8 @@ def trigger_generation(
     background_tasks.add_task(_run_generation, run_id, job.id)
     return {"message": "Generation started", "job_id": job.id}
 
+
+# ── Conflicts / manual edits ─────────────────────────────────────────────────
 
 @router.post("/runs/{run_id}/conflicts/{conflict_id}/resolve", response_model=TimetableConflictResponse)
 def resolve_conflict(
@@ -323,7 +478,7 @@ def mark_notification_read(
     return {"ok": True}
 
 
-# --- Internal helpers ---
+# ── Internal helpers ─────────────────────────────────────────────────────────
 
 def _run_generation(run_id: int, job_id: int) -> None:
     from app.database import SessionLocal
@@ -393,14 +548,8 @@ def _run_generation(run_id: int, job_id: int) -> None:
 
 
 def _notify_run_published(run: TimetableRun, db: Session) -> None:
-    from app.models.university import Faculty, Department
-    from app.models.academic import Level, Class
-    from sqlalchemy import select
-
+    from app.models.university import Department
     faculty_ids = [rf.faculty_id for rf in run.faculties]
-    dept_ids = [
-        d.id for d in db.query(Department).filter(Department.faculty_id.in_(faculty_ids)).all()
-    ]
     users = db.query(User).filter(User.faculty_id.in_(faculty_ids)).all()
     for user in users:
         db.add(Notification(

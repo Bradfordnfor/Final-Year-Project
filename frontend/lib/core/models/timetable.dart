@@ -117,3 +117,37 @@ class AppNotification {
         createdAt: json['created_at'] as String,
       );
 }
+
+class FacultyApproval {
+  final int id;
+  final int runId;
+  final int facultyId;
+  final int facultyHeadId;
+  final String status; // pending | approved | rejected
+  final String? comment;
+  final String? decidedAt;
+
+  const FacultyApproval({
+    required this.id,
+    required this.runId,
+    required this.facultyId,
+    required this.facultyHeadId,
+    required this.status,
+    this.comment,
+    this.decidedAt,
+  });
+
+  factory FacultyApproval.fromJson(Map<String, dynamic> json) => FacultyApproval(
+        id: json['id'] as int,
+        runId: json['run_id'] as int,
+        facultyId: json['faculty_id'] as int,
+        facultyHeadId: json['faculty_head_id'] as int,
+        status: json['status'] as String,
+        comment: json['comment'] as String?,
+        decidedAt: json['decided_at'] as String?,
+      );
+
+  bool get isPending => status == 'pending';
+  bool get isApproved => status == 'approved';
+  bool get isRejected => status == 'rejected';
+}
