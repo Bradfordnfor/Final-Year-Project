@@ -151,32 +151,19 @@ class _SidebarLayout extends StatelessWidget {
                 children: [
                   // Logo / app name
                   Container(
-                    padding: const EdgeInsets.fromLTRB(20, 28, 20, 16),
-                    child: Row(
+                    padding: const EdgeInsets.fromLTRB(0, 24, 0, 16),
+                    child: Column(
                       children: [
-                        Container(
-                          width: 36, height: 36,
-                          decoration: BoxDecoration(
-                            color: cs.primary,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(Icons.school, color: cs.onPrimary, size: 20),
+                        Image.asset(
+                          'assets/images/logo.png',
+                          width: 100,
+                          height: 100,
+                          filterQuality: FilterQuality.high,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('UniFord', style: tt.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: cs.onSurface,
-                              )),
-                              Text('Timetabling System', style: tt.labelSmall?.copyWith(
-                                color: cs.outline,
-                              )),
-                            ],
-                          ),
-                        ),
+                        const SizedBox(height: 2),
+                        Text('Timetabling System', style: tt.labelSmall?.copyWith(
+                          color: cs.outline,
+                        )),
                       ],
                     ),
                   ),
@@ -403,7 +390,7 @@ class _BottomNavLayout extends StatelessWidget {
       appBar: AppBar(
         title: Row(
           children: [
-            Icon(Icons.school, color: Theme.of(context).colorScheme.primary, size: 22),
+            Image.asset('assets/images/logo.png', height: 44, filterQuality: FilterQuality.high),
             const SizedBox(width: 8),
             const Text('UniFord'),
           ],

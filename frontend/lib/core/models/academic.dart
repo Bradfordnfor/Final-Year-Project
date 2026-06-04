@@ -44,6 +44,22 @@ class TimeSlot {
   String get label => '$startTime – $endTime';
 }
 
+class Level {
+  final int id;
+  final int number;
+  final int departmentId;
+
+  const Level({required this.id, required this.number, required this.departmentId});
+
+  factory Level.fromJson(Map<String, dynamic> json) => Level(
+        id: json['id'] as int,
+        number: json['number'] as int,
+        departmentId: json['department_id'] as int,
+      );
+
+  String get label => 'Level $number';
+}
+
 class StudyClass {
   final int id;
   final String name;

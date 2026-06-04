@@ -40,109 +40,107 @@ class _LoginScreenState extends State<LoginScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Card(
-            margin: const EdgeInsets.all(24),
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Icon(Icons.school_rounded,
-                        size: 56, color: colorScheme.primary),
-                    const SizedBox(height: 12),
-                    Text(
-                      'UB Timetabling',
-                      textAlign: TextAlign.center,
-                      style: textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Sign in to continue',
-                      textAlign: TextAlign.center,
-                      style: textTheme.bodyMedium
-                          ?.copyWith(color: colorScheme.outline),
-                    ),
-                    const SizedBox(height: 32),
-                    TextFormField(
-                      controller: _emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.email_outlined),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) =>
-                          (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _passwordCtrl,
-                      obscureText: _obscure,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock_outlined),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscure
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined),
-                          onPressed: () =>
-                              setState(() => _obscure = !_obscure),
+              margin: const EdgeInsets.all(24),
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          height: 220,
+                          filterQuality: FilterQuality.high,
                         ),
                       ),
-                      validator: (v) =>
-                          (v == null || v.length < 6) ? 'Min 6 characters' : null,
-                    ),
-                    const SizedBox(height: 8),
-                    // Error message
-                    Obx(() {
-                      final err = AuthController.to.errorMessage.value;
-                      if (err.isEmpty) return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(
-                          err,
-                          style: TextStyle(color: colorScheme.error),
-                          textAlign: TextAlign.center,
+                      const SizedBox(height: 2),
+                      Text(
+                        'Sign in to continue',
+                        textAlign: TextAlign.center,
+                        style: textTheme.bodyMedium
+                            ?.copyWith(color: colorScheme.outline),
+                      ),
+                      const SizedBox(height: 32),
+                      TextFormField(
+                        controller: _emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.email_outlined),
+                          border: OutlineInputBorder(),
                         ),
-                      );
-                    }),
-                    const SizedBox(height: 8),
-                    Obx(() {
-                      final loading = AuthController.to.isLoading.value;
-                      return FilledButton(
-                        onPressed: loading ? null : _submit,
-                        child: loading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Text('Sign In'),
-                      );
-                    }),
-                    const SizedBox(height: 24),
-                    _TestAccountsPanel(
-                      onSelect: (email, pass) {
-                        _emailCtrl.text = email;
-                        _passwordCtrl.text = pass;
-                      },
-                    ),
-                  ],
+                        validator: (v) => (v == null || !v.contains('@'))
+                            ? 'Enter a valid email'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _passwordCtrl,
+                        obscureText: _obscure,
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          prefixIcon: const Icon(Icons.lock_outlined),
+                          border: const OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            icon: Icon(_obscure
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined),
+                            onPressed: () =>
+                                setState(() => _obscure = !_obscure),
+                          ),
+                        ),
+                        validator: (v) => (v == null || v.length < 6)
+                            ? 'Min 6 characters'
+                            : null,
+                      ),
+                      const SizedBox(height: 8),
+                      // Error message
+                      Obx(() {
+                        final err = AuthController.to.errorMessage.value;
+                        if (err.isEmpty) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            err,
+                            style: TextStyle(color: colorScheme.error),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 8),
+                      Obx(() {
+                        final loading = AuthController.to.isLoading.value;
+                        return FilledButton(
+                          onPressed: loading ? null : _submit,
+                          child: loading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Text('Sign In'),
+                        );
+                      }),
+                      const SizedBox(height: 24),
+                      _TestAccountsPanel(
+                        onSelect: (email, pass) {
+                          _emailCtrl.text = email;
+                          _passwordCtrl.text = pass;
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
   }
 }
 
@@ -158,12 +156,42 @@ class _TestAccountsPanelState extends State<_TestAccountsPanel> {
   bool _expanded = false;
 
   static const _accounts = [
-    (label: 'Super Admin',        email: 'superadmin@ub.cm', pass: 'super123',    color: Colors.purple),
-    (label: 'University Admin',   email: 'admin@ub.cm',      pass: 'admin123',    color: Colors.blue),
-    (label: 'Faculty Head (FET)', email: 'fethead@ub.cm',    pass: 'fethead123',  color: Colors.teal),
-    (label: 'Timetable Officer',  email: 'officer@ub.cm',    pass: 'officer123',  color: Colors.indigo),
-    (label: 'Lecturer',           email: 'lecturer@ub.cm',   pass: 'lecturer123', color: Colors.green),
-    (label: 'Student',            email: 'student@ub.cm',    pass: 'student123',  color: Colors.grey),
+    (
+      label: 'Super Admin',
+      email: 'superadmin@ub.cm',
+      pass: 'super123',
+      color: Colors.purple
+    ),
+    (
+      label: 'University Admin',
+      email: 'admin@ub.cm',
+      pass: 'admin123',
+      color: Colors.blue
+    ),
+    (
+      label: 'Faculty Head (FET)',
+      email: 'fethead@ub.cm',
+      pass: 'fethead123',
+      color: Colors.teal
+    ),
+    (
+      label: 'Timetable Officer',
+      email: 'officer@ub.cm',
+      pass: 'officer123',
+      color: Colors.indigo
+    ),
+    (
+      label: 'Lecturer',
+      email: 'lecturer@ub.cm',
+      pass: 'lecturer123',
+      color: Colors.green
+    ),
+    (
+      label: 'Student',
+      email: 'student@ub.cm',
+      pass: 'student123',
+      color: Colors.grey
+    ),
   ];
 
   @override
@@ -211,7 +239,8 @@ class _TestAccountsPanelState extends State<_TestAccountsPanel> {
                     child: Row(
                       children: [
                         Container(
-                          width: 8, height: 8,
+                          width: 8,
+                          height: 8,
                           decoration: BoxDecoration(
                             color: a.color,
                             shape: BoxShape.circle,

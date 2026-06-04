@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // Deep indigo primary, warm amber accent
-  static const _primary = Color(0xFF3949AB);   // Indigo 600
-  static const _secondary = Color(0xFFFF8F00); // Amber 800
+  // Electric royal blue primary, vivid ember-orange accent
+  static const _primary = Color(0xFF1D4ED8); // Tailwind Blue 700
+  static const _secondary = Color(0xFFEA580C); // Tailwind Orange 600
   static const _error = Color(0xFFD32F2F);
 
   static ThemeData get light {
@@ -59,8 +59,7 @@ class AppTheme {
         style: FilledButton.styleFrom(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600),
         ),
       ),
@@ -121,8 +120,7 @@ class AppTheme {
         style: FilledButton.styleFrom(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           textStyle: GoogleFonts.inter(fontWeight: FontWeight.w600),
         ),
       ),

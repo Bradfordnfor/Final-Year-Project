@@ -16,7 +16,10 @@ void main() {
       expect(user.id, 1);
       expect(user.role, 'super_admin');
       expect(user.isSuperAdmin, isTrue);
-      expect(user.canManageTimetable, isTrue);
+      expect(user.isSystemAdmin, isTrue);
+      expect(user.canManageTimetable, isFalse);
+      expect(user.canManageUniversity, isFalse);
+      expect(user.canSetupFaculty, isFalse);
     });
 
     test('faculty_head role helpers', () {
@@ -25,7 +28,8 @@ void main() {
         role: 'faculty_head', isActive: true, facultyId: 1,
       );
       expect(user.isFacultyHead, isTrue);
-      expect(user.isTimetableOfficer, isTrue);
+      expect(user.isTimetableOfficer, isFalse);
+      expect(user.canSetupFaculty, isTrue);
       expect(user.isStudent, isFalse);
     });
 

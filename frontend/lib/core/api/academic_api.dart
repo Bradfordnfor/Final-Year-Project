@@ -37,6 +37,13 @@ class AcademicApi {
     await _client.delete('/semesters/timeslots/$id');
   }
 
+  Future<List<Level>> getLevels() async {
+    final response = await _client.get('/levels/');
+    return (response.data as List)
+        .map((e) => Level.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<List<StudyClass>> getClasses(int departmentId) async {
     final response = await _client.get('/departments/$departmentId/classes');
     return (response.data as List)

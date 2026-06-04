@@ -38,15 +38,18 @@ class UserModel {
   bool get isLecturer => role == 'lecturer';
   bool get isStudent => role == 'student';
 
-  // Permission groups
+  // System-level admin (no university_id — manages the platform itself)
+  bool get isSystemAdmin => isSuperAdmin;
+
+  // Permission groups — superadmin is system-level only, excluded here
   // University management: buildings, users, semesters, time slots
-  bool get canManageUniversity => isSuperAdmin || isUniversityAdmin;
+  bool get canManageUniversity => isUniversityAdmin;
   // Faculty academic data: departments, levels, courses
-  bool get canSetupFaculty => isSuperAdmin || isUniversityAdmin || isFacultyHead;
+  bool get canSetupFaculty => isUniversityAdmin || isFacultyHead;
   // Timetable workflow: create runs, generate, resolve conflicts, publish
-  bool get canManageTimetable => isSuperAdmin || isTimetableOfficer;
+  bool get canManageTimetable => isTimetableOfficer;
   // Can view internal timetable grid (not public)
-  bool get canViewTimetable => !isStudent;
+  bool get canViewTimetable => !isStudent && !isSuperAdmin;
   // Any internal user (not student)
   bool get isStaff => !isStudent;
 }

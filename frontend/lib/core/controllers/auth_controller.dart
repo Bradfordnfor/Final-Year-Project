@@ -46,7 +46,9 @@ class AuthController extends GetxController {
       _token = result.accessToken;
       await _storage.write(key: _tokenKey, value: _token);
       user.value = result.user;
-      Get.offAllNamed(AppRoutes.dashboard);
+      Get.offAllNamed(
+        result.user.isSuperAdmin ? AppRoutes.universities : AppRoutes.dashboard,
+      );
     } on Exception catch (e) {
       errorMessage.value = _extractMessage(e);
     } finally {
