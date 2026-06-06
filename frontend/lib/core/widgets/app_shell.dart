@@ -1,6 +1,9 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../api/api_client.dart';
+import '../api/auth_api.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/notification_controller.dart';
 import '../models/user.dart';
@@ -188,6 +191,11 @@ class _SidebarLayout extends StatelessWidget {
                   Divider(color: cs.outlineVariant, height: 1),
                   _NotificationTile(),
                   ListTile(
+                    leading: const Icon(Icons.manage_accounts_outlined),
+                    title: const Text('My Account'),
+                    onTap: () => _showChangePasswordDialog(context),
+                  ),
+                  ListTile(
                     leading: const Icon(Icons.logout),
                     title: const Text('Logout'),
                     onTap: () => AuthController.to.logout(),
@@ -373,6 +381,14 @@ class _BottomNavLayout extends StatelessWidget {
               },
             )),
             ListTile(
+              leading: const Icon(Icons.manage_accounts_outlined),
+              title: const Text('My Account'),
+              onTap: () {
+                Navigator.pop(context);
+                _showChangePasswordDialog(context);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Logout'),
               onTap: () => AuthController.to.logout(),
@@ -500,4 +516,127 @@ class _Dest {
   }) : visible = visible ?? _always;
 
   static bool _always(UserModel _) => true;
+}
+
+// ── Change Password Dialog ─────────────────────────────────────────────────────
+
+Future<void> _showChangePasswordDialog(BuildContext context) async {
+  final currentCtrl = TextEditingController();
+  final newCtrl = TextEditingController();
+  final confirmCtrl = TextEditingController();
+  bool obscureCurrent = true;
+  bool obscureNew = true;
+  bool obscureConfirm = true;
+  String? errorMsg;
+  bool saving = false;
+
+  await showDialog(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setS) => AlertDialog(
+        title: const Text('Change Password'),
+        content: SizedBox(
+          width: 320,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: currentCtrl,
+                obscureText: obscureCurrent,
+                decoration: InputDecoration(
+                  labelText: 'Current Password',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(obscureCurrent
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined),
+                    onPressed: () => setS(() => obscureCurrent = !obscureCurrent),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: newCtrl,
+                obscureText: obscureNew,
+                onChanged: (_) => setS(() => errorMsg = null),
+                decoration: InputDecoration(
+                  labelText: 'New Password',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(obscureNew
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined),
+                    onPressed: () => setS(() => obscureNew = !obscureNew),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmCtrl,
+                obscureText: obscureConfirm,
+                onChanged: (_) => setS(() => errorMsg = null),
+                decoration: InputDecoration(
+                  labelText: 'Confirm New Password',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(obscureConfirm
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined),
+                    onPressed: () => setS(() => obscureConfirm = !obscureConfirm),
+                  ),
+                ),
+              ),
+              if (errorMsg != null) ...[
+                const SizedBox(height: 8),
+                Text(errorMsg!,
+                    style: TextStyle(
+                        color: Theme.of(ctx).colorScheme.error,
+                        fontSize: 12)),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          StatefulBuilder(
+            builder: (ctx2, setBtn) => FilledButton(
+              onPressed: (newCtrl.text.isNotEmpty &&
+                      newCtrl.text == confirmCtrl.text &&
+                      currentCtrl.text.isNotEmpty &&
+                      !saving)
+                  ? () async {
+                      setS(() => saving = true);
+                      try {
+                        await AuthApi(ApiClient(token: AuthController.to.token))
+                            .changePassword(currentCtrl.text, newCtrl.text);
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                          Get.snackbar('Password updated', '',
+                              snackPosition: SnackPosition.BOTTOM,
+                              duration: const Duration(seconds: 2));
+                        }
+                      } on DioException catch (e) {
+                        final detail = (e.response?.data as Map?)?['detail']
+                            as String? ?? 'Failed to update password';
+                        setS(() { errorMsg = detail; saving = false; });
+                      } catch (e) {
+                        setS(() { errorMsg = e.toString(); saving = false; });
+                      }
+                    }
+                  : null,
+              child: saving
+                  ? const SizedBox(
+                      width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Save'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }

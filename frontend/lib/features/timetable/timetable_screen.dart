@@ -1,7 +1,9 @@
 import 'dart:html' as html;
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../core/api/academic_api.dart';
@@ -9,6 +11,7 @@ import '../../core/api/api_client.dart';
 import '../../core/api/course_api.dart';
 import '../../core/api/timetable_api.dart';
 import '../../core/api/university_api.dart';
+import '../../core/api/user_api.dart';
 import '../../core/controllers/auth_controller.dart';
 import '../../core/controllers/timetable_controller.dart';
 import '../../core/models/academic.dart';
@@ -16,6 +19,7 @@ import '../../core/models/course.dart';
 import '../../core/models/room.dart';
 import '../../core/models/timetable.dart';
 import '../../core/models/university.dart';
+import '../../core/widgets/class_filter_bar.dart';
 
 class TimetableScreen extends StatefulWidget {
   const TimetableScreen({super.key});
@@ -31,7 +35,13 @@ class _TimetableScreenState extends State<TimetableScreen> {
   List<TimeSlot> _timeSlots = [];
   Map<int, String> _courseNames = {};
   Map<int, String> _roomNames = {};
+  Map<int, int> _roomCapacities = {};
+  Map<int, String> _classNames = {};
+  List<Room> _allRooms = [];
+  Map<int, String> _lecturerNames = {};
   bool _loadingMeta = true;
+  int? _filteredClassId;
+  List<Faculty>? _runFaculties;
 
   @override
   void initState() {
@@ -51,16 +61,52 @@ class _TimetableScreenState extends State<TimetableScreen> {
         CourseApi(client).getCourses(),
         UniversityApi(client).getRooms(),
       ]);
+      final semesters = results[0] as List<Semester>;
+      final faculties = results[1] as List<Faculty>;
+      final buildings = results[2] as List<Building>;
+      final courses = results[3] as List<Course>;
+      final rooms = results[4] as List<Room>;
+
+      // Load class names from faculty trees
+      final classNames = <int, String>{};
+      for (final f in faculties) {
+        try {
+          final resp = await client.get('/faculty-setup/tree?faculty_id=${f.id}');
+          final tree = resp.data as Map<String, dynamic>;
+          for (final dept in (tree['departments'] as List? ?? [])) {
+            for (final lvl in ((dept as Map)['levels'] as List? ?? [])) {
+              final classId = (lvl as Map)['class_id'] as int?;
+              final className = lvl['name'] as String?;
+              if (classId != null && className != null) {
+                classNames[classId] = className;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Load lecturer names
+      final userList = await UserApi(client).getUsers();
+      final lecturerNames = <int, String>{
+        for (final u in userList.where((u) => u.role == 'lecturer')) u.id: u.fullName
+      };
+
       if (mounted) {
         setState(() {
-          _semesters = results[0] as List<Semester>;
-          _faculties = results[1] as List<Faculty>;
-          _buildings = results[2] as List<Building>;
-          final courses = results[3] as List<Course>;
-          final rooms = results[4] as List<Room>;
+          _semesters = semesters;
+          _faculties = faculties;
+          _buildings = buildings;
           _courseNames = {for (final c in courses) c.id: '${c.code} — ${c.name}'};
           _roomNames = {for (final r in rooms) r.id: r.name};
+          _allRooms = rooms;
+          _roomCapacities = {for (final r in rooms) r.id: r.capacity};
+          _classNames = classNames;
+          _lecturerNames = lecturerNames;
           _loadingMeta = false;
+          final run = TimetableController.to.selected.value;
+          if (run != null) {
+            _runFaculties = _faculties.where((f) => run.facultyIds.contains(f.id)).toList();
+          }
         });
       }
     } catch (_) {
@@ -74,6 +120,141 @@ class _TimetableScreenState extends State<TimetableScreen> {
           .getTimeSlots(semesterId);
       if (mounted) setState(() => _timeSlots = ts);
     } catch (_) {}
+  }
+
+  Future<void> _showMoveDialog(TimetableEntry entry, TimetableRun run) async {
+    int? newSlotId = entry.timeSlotId;
+    int? newRoomId = entry.roomId;
+    String? errorMsg;
+
+    final courseName = _courseNames[entry.courseId] ?? 'Course #${entry.courseId}';
+    final currentSlot = _timeSlots.firstWhere(
+      (s) => s.id == entry.timeSlotId,
+      orElse: () => TimeSlot(id: 0, dayOfWeek: '', startTime: '', endTime: '', semesterId: 0),
+    );
+    final currentRoom = _roomNames[entry.roomId] ?? 'Room #${entry.roomId}';
+    final currentCapacity = _roomCapacities[entry.roomId];
+    final currentRoomLabel = currentCapacity != null
+        ? '$currentRoom ($currentCapacity seats)'
+        : currentRoom;
+
+    final classNamesList = entry.classIds.map((id) {
+      return _classNames[id] ?? 'Class #$id';
+    }).join(', ');
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: Text(courseName),
+          content: SizedBox(
+            width: 360,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Expanded(
+                      child: _InfoCard(
+                        label: 'LECTURER',
+                        value: _lecturerNames[entry.lecturerId] ?? 'Lecturer #${entry.lecturerId}',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _InfoCard(label: 'CLASS', value: classNamesList),
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(
+                      child: _InfoCard(
+                        label: 'CURRENT SLOT',
+                        value: '${currentSlot.dayOfWeek} ${currentSlot.label}',
+                        highlight: true,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _InfoCard(
+                        label: 'CURRENT ROOM',
+                        value: currentRoomLabel,
+                        highlight: true,
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<int>(
+                    value: newSlotId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Move to slot',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: _timeSlots.map((s) => DropdownMenuItem(
+                      value: s.id,
+                      child: Text('${s.dayOfWeek} ${s.label}',
+                          overflow: TextOverflow.ellipsis),
+                    )).toList(),
+                    onChanged: (v) => setS(() { newSlotId = v; errorMsg = null; }),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    value: newRoomId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Move to room',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: _allRooms.map((r) => DropdownMenuItem(
+                      value: r.id,
+                      child: Text('${r.name} (${r.capacity} seats)',
+                          overflow: TextOverflow.ellipsis),
+                    )).toList(),
+                    onChanged: (v) => setS(() { newRoomId = v; errorMsg = null; }),
+                  ),
+                  if (errorMsg != null) ...[
+                    const SizedBox(height: 8),
+                    Text(errorMsg!,
+                        style: TextStyle(
+                          color: Theme.of(ctx).colorScheme.error,
+                          fontSize: 12,
+                        )),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: (newSlotId != null && newRoomId != null)
+                  ? () async {
+                      try {
+                        final api = TimetableApi(ApiClient(token: AuthController.to.token));
+                        await api.moveEntry(run.id, entry.id, newSlotId!, newRoomId!);
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        TimetableController.to.fetchRuns();
+                        await TimetableController.to.loadEntries(run.id);
+                      } on DioException catch (e) {
+                        final detail = (e.response?.data as Map?)?['detail']
+                            as String? ?? e.message ?? 'Unknown error';
+                        setS(() => errorMsg = detail);
+                      } catch (e) {
+                        setS(() => errorMsg = e.toString());
+                      }
+                    }
+                  : null,
+              child: const Text('Move'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showCreateDialog() {
@@ -330,6 +511,14 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                   onTap: () async {
                                     await ctrl.selectRun(r.id);
                                     await _loadTimeSlots(r.semesterId);
+                                    if (mounted) {
+                                      setState(() {
+                                        _filteredClassId = null;
+                                        _runFaculties = _faculties
+                                            .where((f) => r.facultyIds.contains(f.id))
+                                            .toList();
+                                      });
+                                    }
                                   },
                                 );
                               },
@@ -351,18 +540,34 @@ class _TimetableScreenState extends State<TimetableScreen> {
                             ],
                           ),
                         )
-                      : _TimetableGrid(
-                          entries: ctrl.entries,
-                          timeSlots: _timeSlots,
-                          run: selected,
-                          canManage: canManage,
-                          canAdvance: canAdvance,
-                          canPublish: canPublish,
-                          isTimetableOfficer: isTimetableOfficer,
-                          isFacultyHead: isFacultyHead,
-                          currentUserId: currentUserId,
-                          courseNames: _courseNames,
-                          roomNames: _roomNames,
+                      : Column(
+                          children: [
+                            ClassFilterBar(
+                              client: ApiClient(token: AuthController.to.token),
+                              faculties: _runFaculties,
+                              onClassSelected: (id) => setState(() => _filteredClassId = id),
+                            ),
+                            Expanded(
+                              child: _TimetableGrid(
+                                entries: _filteredClassId != null
+                                    ? ctrl.entries.where((e) => e.classIds.contains(_filteredClassId)).toList()
+                                    : ctrl.entries,
+                                timeSlots: _timeSlots,
+                                run: selected,
+                                canManage: canManage,
+                                canAdvance: canAdvance,
+                                canPublish: canPublish,
+                                isTimetableOfficer: isTimetableOfficer,
+                                isFacultyHead: isFacultyHead,
+                                currentUserId: currentUserId,
+                                courseNames: _courseNames,
+                                roomNames: _roomNames,
+                                onEntryTap: (canManage || isFacultyHead)
+                                    ? (entry) => _showMoveDialog(entry, selected)
+                                    : null,
+                              ),
+                            ),
+                          ],
                         ),
                 ),
               ],
@@ -404,7 +609,29 @@ class _RunCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis),
               const SizedBox(height: 6),
-              _StatusBadge(run.status),
+              Row(
+                children: [
+                  _StatusBadge(run.status),
+                  if (run.isPublished)
+                    IconButton(
+                      icon: const Icon(Icons.link, size: 18),
+                      tooltip: 'Copy shareable link',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () {
+                        final origin = Uri.base.origin;
+                        final link = '$origin/#/public?run=${run.id}';
+                        Clipboard.setData(ClipboardData(text: link));
+                        Get.snackbar(
+                          'Link copied',
+                          'Share with students',
+                          snackPosition: SnackPosition.BOTTOM,
+                          duration: const Duration(seconds: 2),
+                        );
+                      },
+                    ),
+                ],
+              ),
               const SizedBox(height: 4),
               Text(
                 '${run.facultyIds.length} facult${run.facultyIds.length == 1 ? 'y' : 'ies'} · '
@@ -448,6 +675,7 @@ class _TimetableGrid extends StatelessWidget {
   final int? currentUserId;
   final Map<int, String> courseNames;
   final Map<int, String> roomNames;
+  final void Function(TimetableEntry)? onEntryTap;
 
   const _TimetableGrid({
     required this.entries, required this.timeSlots,
@@ -456,6 +684,7 @@ class _TimetableGrid extends StatelessWidget {
     this.isTimetableOfficer = false, this.isFacultyHead = false,
     this.currentUserId,
     this.courseNames = const {}, this.roomNames = const {},
+    this.onEntryTap,
   });
 
   static const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -586,12 +815,18 @@ class _TimetableGrid extends StatelessWidget {
                               color: cs.onPrimaryContainer,
                             )),
                       ),
-                      ...slots.map((ts) => _SlotCell(
-                            timeSlot: ts,
-                            entry: entryBySlot[ts.id],
-                            courseNames: courseNames,
-                            roomNames: roomNames,
-                          )),
+                      ...slots.map((ts) {
+                        final entry = entryBySlot[ts.id];
+                        return _SlotCell(
+                          timeSlot: ts,
+                          entry: entry,
+                          courseNames: courseNames,
+                          roomNames: roomNames,
+                          onTap: (onEntryTap != null && entry != null)
+                              ? () => onEntryTap!(entry)
+                              : null,
+                        );
+                      }),
                     ],
                   ),
                 );
@@ -609,10 +844,12 @@ class _SlotCell extends StatelessWidget {
   final TimetableEntry? entry;
   final Map<int, String> courseNames;
   final Map<int, String> roomNames;
+  final VoidCallback? onTap;
 
   const _SlotCell({
     required this.timeSlot, this.entry,
     this.courseNames = const {}, this.roomNames = const {},
+    this.onTap,
   });
 
   @override
@@ -620,7 +857,7 @@ class _SlotCell extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final hasEntry = entry != null;
 
-    return Container(
+    final cell = Container(
       width: 164,
       constraints: const BoxConstraints(minHeight: 70),
       margin: const EdgeInsets.fromLTRB(2, 0, 2, 2),
@@ -656,10 +893,23 @@ class _SlotCell extends StatelessWidget {
               Text('Overcapacity',
                   style: TextStyle(
                       color: cs.error, fontSize: 10, fontWeight: FontWeight.bold)),
+            if (onTap != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Icon(Icons.edit_outlined, size: 12, color: cs.outline),
+              ),
           ],
         ],
       ),
     );
+
+    if (onTap != null) {
+      return GestureDetector(
+        onTap: onTap,
+        child: cell,
+      );
+    }
+    return cell;
   }
 }
 
@@ -684,6 +934,47 @@ class _StatusBadge extends StatelessWidget {
       child: Text(
         status.replaceAll('_', ' '),
         style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
+class _InfoCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool highlight;
+  const _InfoCard({required this.label, required this.value, this.highlight = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: highlight ? cs.primaryContainer.withAlpha(120) : cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(6),
+        border: highlight
+            ? Border.all(color: cs.primary.withAlpha(80))
+            : Border.all(color: cs.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 9,
+                  color: cs.outline,
+                  letterSpacing: 0.5,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: highlight ? cs.primary : cs.onSurface),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis),
+        ],
       ),
     );
   }

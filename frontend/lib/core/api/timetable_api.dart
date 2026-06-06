@@ -130,4 +130,12 @@ class TimetableApi {
       data: {'comment': comment},
     );
   }
+
+  Future<void> moveEntry(int runId, int entryId, int newSlotId, int newRoomId) async {
+    await _client.put('/runs/$runId/entries/move', data: {
+      'entry_id': entryId,
+      'new_time_slot_id': newSlotId,
+      'new_room_id': newRoomId,
+    });
+  }
 }

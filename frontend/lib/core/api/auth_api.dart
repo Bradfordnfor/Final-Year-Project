@@ -17,4 +17,11 @@ class AuthApi {
     final response = await _client.get('/auth/me');
     return UserModel.fromJson(response.data as Map<String, dynamic>);
   }
+
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    await _client.post('/auth/change-password', data: {
+      'current_password': currentPassword,
+      'new_password': newPassword,
+    });
+  }
 }

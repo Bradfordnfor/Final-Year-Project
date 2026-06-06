@@ -1286,6 +1286,7 @@ class _CoursesTab extends StatefulWidget {
 class _CoursesTabState extends State<_CoursesTab> {
   late final CourseApi _api;
   List<Course> _courses = [];
+  List<UserModel> _lecturers = [];
   bool _loading = true;
   String _search = '';
   String? _universityName;
@@ -1297,6 +1298,16 @@ class _CoursesTabState extends State<_CoursesTab> {
     super.initState();
     _api = CourseApi(ApiClient(token: AuthController.to.token));
     _load();
+    _loadLecturers();
+  }
+
+  Future<void> _loadLecturers() async {
+    try {
+      final users = await UserApi(ApiClient(token: AuthController.to.token)).getUsers();
+      if (mounted) {
+        setState(() => _lecturers = users.where((u) => u.role == 'lecturer').toList());
+      }
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -1655,6 +1666,52 @@ class _CoursesTabState extends State<_CoursesTab> {
     );
   }
 
+  Future<void> _showAssignLecturerDialog(Course course) async {
+    int? selectedId = course.lecturerId;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          title: Text('Assign Lecturer — ${course.code}'),
+          content: DropdownButtonFormField<int?>(
+            value: selectedId,
+            decoration: const InputDecoration(
+              labelText: 'Lecturer',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              const DropdownMenuItem(value: null, child: Text('Unassigned')),
+              ..._lecturers.map((l) => DropdownMenuItem(
+                    value: l.id,
+                    child: Text(l.fullName),
+                  )),
+            ],
+            onChanged: (v) => setS(() => selectedId = v),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+    try {
+      await _api.updateCourseLecturer(course.id, selectedId);
+      await _load();
+    } catch (e) {
+      if (mounted) Get.snackbar('Error', 'Failed: $e', snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _courses.where((c) =>
@@ -1691,22 +1748,39 @@ class _CoursesTabState extends State<_CoursesTab> {
                     itemBuilder: (_, i) {
                       final c = filtered[i];
                       return ListTile(
-                        leading: const Icon(Icons.book_outlined),
-                        title: Text(c.code,
-                            style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(c.name),
+                        title: Text(
+                          '${c.code} — ${c.name}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text(
+                          c.lecturerId != null
+                              ? _lecturers.firstWhere(
+                                    (l) => l.id == c.lecturerId,
+                                    orElse: () => UserModel(
+                                      id: 0, email: '', fullName: 'Unknown',
+                                      role: 'lecturer', isActive: false,
+                                    ),
+                                  ).fullName
+                              : 'No lecturer assigned',
+                          style: TextStyle(
+                            color: c.lecturerId == null
+                                ? Theme.of(context).colorScheme.error
+                                : Theme.of(context).colorScheme.outline,
+                            fontSize: 12,
+                          ),
+                        ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Chip(
-                              label: Text(c.roomTypeRequired.replaceAll('_', ' '),
-                                  style: const TextStyle(fontSize: 11)),
-                              padding: EdgeInsets.zero,
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            IconButton(
+                              icon: const Icon(Icons.person_outline, size: 20),
+                              tooltip: 'Assign Lecturer',
+                              onPressed: () => _showAssignLecturerDialog(c),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.delete_outline,
-                                  color: Colors.red),
+                              icon: Icon(Icons.delete_outline,
+                                  size: 20, color: Theme.of(context).colorScheme.error),
+                              tooltip: 'Delete',
                               onPressed: () => _delete(c.id),
                             ),
                           ],

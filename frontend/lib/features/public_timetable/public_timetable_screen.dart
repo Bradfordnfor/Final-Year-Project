@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/api/course_api.dart';
@@ -9,6 +10,7 @@ import '../../core/models/academic.dart';
 import '../../core/models/course.dart';
 import '../../core/models/room.dart';
 import '../../core/models/timetable.dart';
+import '../../core/widgets/class_filter_bar.dart';
 
 class PublicTimetableScreen extends StatefulWidget {
   const PublicTimetableScreen({super.key});
@@ -26,6 +28,7 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
   Map<int, String> _roomNames = {};
   bool _loading = true;
   bool _loadingEntries = false;
+  int? _filteredClassId;
 
   // Unauthenticated client (no token)
   final _client = ApiClient();
@@ -33,7 +36,17 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
   @override
   void initState() {
     super.initState();
-    _loadPublished();
+    _loadPublished().then((_) {
+      // Auto-select run from deep link: /#/public?run=<id>
+      final runParam = Get.parameters['run'];
+      if (runParam != null) {
+        final runId = int.tryParse(runParam);
+        if (runId != null) {
+          final match = _runs.where((r) => r.id == runId).firstOrNull;
+          if (match != null) _selectRun(match);
+        }
+      }
+    });
   }
 
   Future<void> _loadPublished() async {
@@ -139,15 +152,29 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
                           ),
                         ),
                         VerticalDivider(color: cs.outlineVariant, width: 1),
-                        Expanded(child: _TimetableView(
-                          run: _selectedRun,
-                          entries: _entries,
-                          timeSlots: _timeSlots,
-                          loading: _loadingEntries,
-                          days: _days,
-                          courseNames: _courseNames,
-                          roomNames: _roomNames,
-                        )),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              ClassFilterBar(
+                                client: _client,
+                                onClassSelected: (id) => setState(() => _filteredClassId = id),
+                              ),
+                              Expanded(
+                                child: _TimetableView(
+                                  run: _selectedRun,
+                                  entries: _filteredClassId != null
+                                      ? _entries.where((e) => e.classIds.contains(_filteredClassId)).toList()
+                                      : _entries,
+                                  timeSlots: _timeSlots,
+                                  loading: _loadingEntries,
+                                  days: _days,
+                                  courseNames: _courseNames,
+                                  roomNames: _roomNames,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     )
                   : _selectedRun == null
@@ -165,15 +192,23 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
                               ),
                               title: Text(_selectedRun!.name),
                             ),
-                            Expanded(child: _TimetableView(
-                              run: _selectedRun,
-                              entries: _entries,
-                              timeSlots: _timeSlots,
-                              loading: _loadingEntries,
-                              days: _days,
-                              courseNames: _courseNames,
-                              roomNames: _roomNames,
-                            )),
+                            ClassFilterBar(
+                              client: _client,
+                              onClassSelected: (id) => setState(() => _filteredClassId = id),
+                            ),
+                            Expanded(
+                              child: _TimetableView(
+                                run: _selectedRun,
+                                entries: _filteredClassId != null
+                                    ? _entries.where((e) => e.classIds.contains(_filteredClassId)).toList()
+                                    : _entries,
+                                timeSlots: _timeSlots,
+                                loading: _loadingEntries,
+                                days: _days,
+                                courseNames: _courseNames,
+                                roomNames: _roomNames,
+                              ),
+                            ),
                           ],
                         ),
     );

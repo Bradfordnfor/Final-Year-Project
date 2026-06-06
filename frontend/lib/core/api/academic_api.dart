@@ -50,4 +50,28 @@ class AcademicApi {
         .map((e) => StudyClass.fromJson(e as Map<String, dynamic>))
         .toList();
   }
+
+  Future<void> updateClassPopulation(int classId, int population) async {
+    await _client.put('/classes/$classId', data: {'population': population});
+  }
+
+  Future<List<Map<String, dynamic>>> getGroups(int classId) async {
+    final response = await _client.get('/groups/');
+    return (response.data as List)
+        .cast<Map<String, dynamic>>()
+        .where((g) => g['class_id'] == classId)
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> createGroup(String name, int classId) async {
+    final response = await _client.post('/groups/', data: {
+      'name': name,
+      'class_id': classId,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> deleteGroup(int groupId) async {
+    await _client.delete('/groups/$groupId');
+  }
 }

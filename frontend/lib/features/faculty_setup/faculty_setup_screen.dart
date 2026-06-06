@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/api/academic_api.dart';
 import '../../core/api/api_client.dart';
 import '../../core/controllers/auth_controller.dart';
 import '../../core/models/university.dart';
@@ -1036,17 +1037,99 @@ class _LevelTile extends StatefulWidget {
 
 class _LevelTileState extends State<_LevelTile> {
   bool _expanded = false;
+  late int _population;
+  List<Map<String, dynamic>> _groups = [];
+  bool _loadingGroups = false;
+  int _activeTab = 0; // 0 = Courses, 1 = Lab Groups
+  final _newGroupCtrl = TextEditingController();
+  bool _addingGroup = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _population = widget.level['population'] as int? ?? 0;
+  }
+
+  @override
+  void dispose() {
+    _newGroupCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadGroups() async {
+    final classId = widget.level['class_id'] as int?;
+    if (classId == null) return;
+    setState(() => _loadingGroups = true);
+    try {
+      final groups = await AcademicApi(ApiClient(token: AuthController.to.token))
+          .getGroups(classId);
+      if (mounted) setState(() { _groups = groups; _loadingGroups = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingGroups = false);
+    }
+  }
+
+  Future<void> _editPopulation() async {
+    final classId = widget.level['class_id'] as int?;
+    if (classId == null) return;
+
+    final ctrl = TextEditingController(text: '$_population');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Edit Level ${widget.level['number']} Population'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Number of students',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    final newPop = int.tryParse(ctrl.text.trim());
+    if (newPop == null || newPop < 0) return;
+
+    try {
+      final token = AuthController.to.token;
+      await AcademicApi(ApiClient(token: token))
+          .updateClassPopulation(classId, newPop);
+      if (mounted) setState(() => _population = newPop);
+    } catch (e) {
+      if (mounted) {
+        Get.snackbar('Error', 'Failed to update population: $e',
+            snackPosition: SnackPosition.BOTTOM);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final courses = widget.level['courses'] as List? ?? [];
-    final population = widget.level['population'] as int? ?? 0;
 
     return Column(
       children: [
         InkWell(
-          onTap: () => setState(() => _expanded = !_expanded),
+          onTap: () {
+            final wasExpanded = _expanded;
+            setState(() => _expanded = !_expanded);
+            if (!wasExpanded) _loadGroups();
+          },
           child: Padding(
             padding: const EdgeInsets.fromLTRB(32, 10, 12, 10),
             child: Row(
@@ -1057,22 +1140,28 @@ class _LevelTileState extends State<_LevelTile> {
                     style: const TextStyle(
                         fontWeight: FontWeight.w600, fontSize: 14)),
                 const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: cs.secondaryContainer,
-                    borderRadius: BorderRadius.circular(12),
+                GestureDetector(
+                  onTap: _editPopulation,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: cs.secondaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.people_outline,
+                          size: 12, color: cs.onSecondaryContainer),
+                      const SizedBox(width: 4),
+                      Text('$_population',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSecondaryContainer)),
+                      const SizedBox(width: 4),
+                      Icon(Icons.edit_outlined,
+                          size: 10, color: cs.onSecondaryContainer),
+                    ]),
                   ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.people_outline,
-                        size: 12, color: cs.onSecondaryContainer),
-                    const SizedBox(width: 4),
-                    Text('$population',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: cs.onSecondaryContainer)),
-                  ]),
                 ),
                 const SizedBox(width: 8),
                 Container(
@@ -1087,11 +1176,39 @@ class _LevelTileState extends State<_LevelTile> {
                       style: TextStyle(
                           fontSize: 11, color: cs.onTertiaryContainer)),
                 ),
+                if (_groups.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: cs.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.group_outlined, size: 12, color: cs.onTertiaryContainer),
+                      const SizedBox(width: 4),
+                      Text('${_groups.length} grp${_groups.length == 1 ? '' : 's'}',
+                          style: TextStyle(fontSize: 11, color: cs.onTertiaryContainer)),
+                    ]),
+                  ),
+                ],
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.book_outlined, size: 18),
                   onPressed: widget.onAddCourse,
                   tooltip: 'Add Course',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.group_add_outlined, size: 18),
+                  onPressed: () {
+                    setState(() {
+                      _expanded = true;
+                      _activeTab = 1;
+                      _addingGroup = true;
+                    });
+                    if (_groups.isEmpty) _loadGroups();
+                  },
+                  tooltip: 'Add Group',
                 ),
                 IconButton(
                   icon: Icon(Icons.delete_outline,
@@ -1106,57 +1223,193 @@ class _LevelTileState extends State<_LevelTile> {
           ),
         ),
         if (_expanded) ...[
-          ...courses.map((co) {
-            final course = co as Map<String, dynamic>;
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(48, 0, 16, 2),
-              child: ListTile(
-                dense: true,
-                leading: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: cs.secondaryContainer,
-                    borderRadius: BorderRadius.circular(6),
+          // Tab row
+          Row(
+            children: [
+              _TabButton(
+                label: 'Courses',
+                active: _activeTab == 0,
+                onTap: () => setState(() => _activeTab = 0),
+              ),
+              _TabButton(
+                label: 'Lab Groups',
+                active: _activeTab == 1,
+                onTap: () => setState(() => _activeTab = 1),
+              ),
+            ],
+          ),
+          // Courses tab — existing course list, unchanged
+          if (_activeTab == 0) ...[
+            ...courses.map((co) {
+              final course = co as Map<String, dynamic>;
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(48, 0, 16, 2),
+                child: ListTile(
+                  dense: true,
+                  leading: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: cs.secondaryContainer,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(course['code'] as String,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSecondaryContainer,
+                            fontWeight: FontWeight.bold)),
                   ),
-                  child: Text(course['code'] as String,
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: cs.onSecondaryContainer,
-                          fontWeight: FontWeight.bold)),
+                  title: Text(course['name'] as String,
+                      style: const TextStyle(fontSize: 13)),
+                  subtitle: Text('${course['weekly_hours'] ?? 2}×/week',
+                      style: TextStyle(fontSize: 10, color: cs.outline)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _RoomTypeBadge(course['room_type_required'] as String),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: Icon(Icons.delete_outline, size: 16, color: cs.error),
+                        onPressed: () => widget.onDeleteCourse(course['id'] as int),
+                        tooltip: 'Delete course',
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
+                  ),
                 ),
-                title: Text(course['name'] as String,
-                    style: const TextStyle(fontSize: 13)),
-                subtitle: Text('${course['weekly_hours'] ?? 2}×/week',
-                    style: TextStyle(fontSize: 10, color: cs.outline)),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
+              );
+            }),
+            if (courses.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(48, 0, 16, 8),
+                child: Text('No courses yet',
+                    style: TextStyle(fontSize: 12, color: cs.outline)),
+              ),
+          ],
+          // Lab Groups tab
+          if (_activeTab == 1) ...[
+            if (_loadingGroups)
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: LinearProgressIndicator(),
+              )
+            else ...[
+              if (_addingGroup)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(32, 8, 12, 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _newGroupCtrl,
+                          autofocus: true,
+                          decoration: const InputDecoration(
+                            hintText: 'Group name, e.g. Group A',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.check, size: 18),
+                        color: cs.primary,
+                        onPressed: () async {
+                          final name = _newGroupCtrl.text.trim();
+                          if (name.isEmpty) return;
+                          final classId = widget.level['class_id'] as int?;
+                          if (classId == null) return;
+                          try {
+                            await AcademicApi(ApiClient(token: AuthController.to.token))
+                                .createGroup(name, classId);
+                            _newGroupCtrl.clear();
+                            setState(() => _addingGroup = false);
+                            await _loadGroups();
+                          } catch (e) {
+                            Get.snackbar('Error', 'Failed: $e', snackPosition: SnackPosition.BOTTOM);
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close, size: 18, color: cs.outline),
+                        onPressed: () {
+                          _newGroupCtrl.clear();
+                          setState(() => _addingGroup = false);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              if (_groups.isEmpty && !_addingGroup)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(32, 12, 12, 12),
+                  child: Text('No groups yet',
+                      style: TextStyle(color: cs.outline, fontSize: 13)),
+                ),
+              ..._groups.map((g) => Padding(
+                padding: const EdgeInsets.fromLTRB(32, 2, 12, 2),
+                child: Row(
                   children: [
-                    _RoomTypeBadge(
-                        course['room_type_required'] as String),
-                    const SizedBox(width: 4),
+                    Icon(Icons.group_outlined, size: 16, color: cs.secondary),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(g['name'] as String,
+                        style: const TextStyle(fontSize: 13))),
                     IconButton(
-                      icon: Icon(Icons.delete_outline,
-                          size: 16, color: cs.error),
-                      onPressed: () =>
-                          widget.onDeleteCourse(course['id'] as int),
-                      tooltip: 'Delete course',
-                      visualDensity: VisualDensity.compact,
+                      icon: Icon(Icons.delete_outline, size: 16, color: cs.error),
+                      onPressed: () async {
+                        try {
+                          await AcademicApi(ApiClient(token: AuthController.to.token))
+                              .deleteGroup(g['id'] as int);
+                          await _loadGroups();
+                        } catch (e) {
+                          Get.snackbar('Error', 'Failed: $e', snackPosition: SnackPosition.BOTTOM);
+                        }
+                      },
                     ),
                   ],
                 ),
-              ),
-            );
-          }),
-          if (courses.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(48, 0, 16, 8),
-              child: Text('No courses yet',
-                  style: TextStyle(fontSize: 12, color: cs.outline)),
-            ),
+              )),
+            ],
+          ],
         ],
         Divider(color: cs.outlineVariant, height: 1, indent: 32),
       ],
+    );
+  }
+}
+
+// ── Tab button ────────────────────────────────────────────────────────────────
+
+class _TabButton extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _TabButton({required this.label, required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: active ? cs.primary : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+            color: active ? cs.primary : cs.outline,
+          ),
+        ),
+      ),
     );
   }
 }

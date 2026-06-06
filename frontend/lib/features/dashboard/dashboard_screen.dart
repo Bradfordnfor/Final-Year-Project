@@ -118,11 +118,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   label: 'Analytics',
                   onTap: () => Get.offAllNamed(AppRoutes.analytics),
                 ),
-                _ActionChip(
-                  icon: Icons.manage_accounts_outlined,
-                  label: 'Management',
-                  onTap: () => Get.offAllNamed(AppRoutes.management),
-                ),
+                if (user.canManageUniversity)
+                  _ActionChip(
+                    icon: Icons.manage_accounts_outlined,
+                    label: 'Management',
+                    onTap: () => Get.offAllNamed(AppRoutes.management),
+                  ),
               ],
             ),
             const SizedBox(height: 32),

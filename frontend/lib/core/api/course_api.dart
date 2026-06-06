@@ -25,4 +25,11 @@ class CourseApi {
   Future<void> deleteCourse(int id) async {
     await _client.delete('/courses/$id');
   }
+
+  Future<Course> updateCourseLecturer(int courseId, int? lecturerId) async {
+    final response = await _client.put('/courses/$courseId', data: {
+      'lecturer_id': lecturerId,
+    });
+    return Course.fromJson(response.data as Map<String, dynamic>);
+  }
 }
