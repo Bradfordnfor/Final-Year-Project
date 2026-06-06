@@ -111,7 +111,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _ActionChip(
                   icon: Icons.auto_fix_high_outlined,
                   label: 'Generate',
-                  onTap: () => Get.offAllNamed(AppRoutes.generation),
+                  onTap: () => Get.offAllNamed(AppRoutes.timetable),
                 ),
                 _ActionChip(
                   icon: Icons.bar_chart_outlined,

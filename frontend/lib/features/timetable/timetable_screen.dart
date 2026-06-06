@@ -85,10 +85,11 @@ class _TimetableScreenState extends State<TimetableScreen> {
         } catch (_) {}
       }
 
-      // Load lecturer names
-      final userList = await UserApi(client).getUsers();
+      // Load lecturer names keyed by Lecturer.id (not user id)
+      final lecturerList = await UserApi(client).getLecturers();
       final lecturerNames = <int, String>{
-        for (final u in userList.where((u) => u.role == 'lecturer')) u.id: u.fullName
+        for (final l in lecturerList)
+          (l['id'] as int): (l['full_name'] as String? ?? '')
       };
 
       if (mounted) {

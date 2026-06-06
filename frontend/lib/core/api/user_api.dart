@@ -17,6 +17,13 @@ class UserApi {
     return UserModel.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// Returns lecturers with their Lecturer.id (not user id) and full_name.
+  /// Use this to build lecturer name maps for timetable entries.
+  Future<List<Map<String, dynamic>>> getLecturers() async {
+    final response = await _client.get('/lecturers/');
+    return (response.data as List).cast<Map<String, dynamic>>();
+  }
+
   Future<List<Map<String, dynamic>>> getLecturerAvailability(int lecturerId) async {
     final response = await _client.get('/lecturers/$lecturerId/availability');
     return List<Map<String, dynamic>>.from(response.data as List);

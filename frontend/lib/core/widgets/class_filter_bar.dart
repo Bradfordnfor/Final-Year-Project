@@ -89,19 +89,12 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
       _selectedLevel = null;
       _levels = [];
     });
-    if (d == null || _selectedFaculty == null) return;
+    if (d == null) return;
     setState(() => _loadingLevels = true);
     try {
       final resp = await widget.client
-          .get('/faculty-setup/tree?faculty_id=${_selectedFaculty!.id}');
-      final tree = resp.data as Map<String, dynamic>;
-      final depts = (tree['departments'] as List<dynamic>? ?? []);
-      final deptMap = depts.cast<Map<String, dynamic>>().firstWhere(
-        (dep) => dep['id'] == d.id,
-        orElse: () => <String, dynamic>{},
-      );
-      final levels = (deptMap['levels'] as List<dynamic>? ?? [])
-          .cast<Map<String, dynamic>>();
+          .get('/faculty-setup/public-levels?department_id=${d.id}');
+      final levels = (resp.data as List).cast<Map<String, dynamic>>();
       if (mounted) setState(() { _levels = levels; _loadingLevels = false; });
     } catch (_) {
       if (mounted) setState(() => _loadingLevels = false);
