@@ -23,13 +23,23 @@ class _GenerationScreenState extends State<GenerationScreen> {
   bool _loadingTrees = false;
   TimetableRun? _lastLoadedRun;
 
+  // Readiness checklist from /runs/{id}/readiness
+  Map<String, dynamic>? _readiness;
+  bool _loadingReadiness = false;
+
   @override
   void initState() {
     super.initState();
     final run = _ctrl.selected.value;
-    if (run != null) _loadTrees(run);
+    if (run != null) {
+      _loadTrees(run);
+      _loadReadiness(run);
+    }
     ever(_ctrl.selected, (run) {
-      if (run != null && run != _lastLoadedRun) _loadTrees(run);
+      if (run != null && run != _lastLoadedRun) {
+        _loadTrees(run);
+        _loadReadiness(run);
+      }
     });
   }
 
@@ -48,6 +58,18 @@ class _GenerationScreenState extends State<GenerationScreen> {
     if (mounted) setState(() => _loadingTrees = false);
   }
 
+  Future<void> _loadReadiness(TimetableRun run) async {
+    setState(() { _loadingReadiness = true; _readiness = null; });
+    final client = ApiClient(token: AuthController.to.token);
+    try {
+      final res = await client.get('/runs/${run.id}/readiness');
+      if (mounted) setState(() => _readiness = res.data as Map<String, dynamic>);
+    } catch (_) {
+      // leave _readiness null; the button stays enabled and the backend guard still applies
+    }
+    if (mounted) setState(() => _loadingReadiness = false);
+  }
+
   Future<void> _trigger() async {
     final id = _ctrl.selected.value?.id;
     if (id == null) {
@@ -58,6 +80,8 @@ class _GenerationScreenState extends State<GenerationScreen> {
       await _ctrl.generate(id);
     } catch (e) {
       Get.snackbar('Error', 'Failed to start generation: $e');
+      final run = _ctrl.selected.value;
+      if (run != null) _loadReadiness(run); // refresh so the checklist reflects why
     }
   }
 
@@ -146,9 +170,17 @@ class _GenerationScreenState extends State<GenerationScreen> {
 
           if (conflicts.isNotEmpty) const SizedBox(height: 16),
 
-          // Generate button
+          // Readiness checklist
+          _ReadinessCard(
+            readiness: _readiness,
+            loading: _loadingReadiness,
+          ).animate().fadeIn(duration: 250.ms, delay: 120.ms),
+
+          const SizedBox(height: 16),
+
+          // Generate button — blocked until the run is ready
           FilledButton.icon(
-            onPressed: isGenerating ? null : _trigger,
+            onPressed: (isGenerating || _readiness?['ready'] == false) ? null : _trigger,
             icon: isGenerating
                 ? const SizedBox(
                     width: 20, height: 20,
@@ -349,6 +381,85 @@ class _FacultyTreeTileState extends State<_FacultyTreeTile> {
           ),
         Divider(color: cs.outlineVariant, height: 8),
       ],
+    );
+  }
+}
+
+// ─── Readiness checklist ──────────────────────────────────────────────────────
+
+class _ReadinessCard extends StatelessWidget {
+  final Map<String, dynamic>? readiness;
+  final bool loading;
+
+  const _ReadinessCard({required this.readiness, required this.loading});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    if (loading) {
+      return const Card(
+        child: ListTile(
+          leading: SizedBox(
+            width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+          title: Text('Checking readiness…'),
+        ),
+      );
+    }
+    if (readiness == null) return const SizedBox.shrink();
+
+    final ready = readiness!['ready'] == true;
+    final checks = (readiness!['checks'] as List? ?? []).cast<Map<String, dynamic>>();
+
+    return Card(
+      color: ready ? Colors.green.shade50 : Colors.amber.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(ready ? Icons.verified_outlined : Icons.checklist_outlined,
+                    size: 18, color: ready ? Colors.green.shade700 : Colors.orange.shade800),
+                const SizedBox(width: 8),
+                Text(ready ? 'Ready to generate' : 'Not ready to generate',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...checks.map((c) {
+              final ok = c['ok'] == true;
+              final detail = (c['detail'] as String?) ?? '';
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(ok ? Icons.check_circle : Icons.cancel,
+                        size: 16,
+                        color: ok ? Colors.green : cs.error),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(c['label'] as String? ?? '',
+                              style: const TextStyle(fontSize: 13)),
+                          if (!ok && detail.isNotEmpty)
+                            Text(detail,
+                                style: TextStyle(fontSize: 12, color: cs.error)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
     );
   }
 }

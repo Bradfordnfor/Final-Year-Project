@@ -325,12 +325,28 @@ class _FacultySetupScreenState extends State<FacultySetupScreen> {
     final nameCtrl = TextEditingController();
     String roomType = 'lecture_hall';
     int weeklyHours = 2;
+    int semester = 1;
+    final Set<int> sharedClassIds = {};
+    // Other classes across the faculty that can jointly attend this course.
+    final List<Map<String, dynamic>> classOptions = [];
+    for (final d in (_tree?['departments'] as List? ?? [])) {
+      final dcode = d['code'] as String? ?? '';
+      for (final l in (d['levels'] as List? ?? [])) {
+        final cid = l['class_id'] as int?;
+        if (cid != null && l['id'] != levelId) {
+          classOptions.add({'id': cid, 'label': '$dcode ${l['number']}'});
+        }
+      }
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
           title: const Text('Add Course'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
+          content: SizedBox(
+            width: 360,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
             TextField(
                 controller: codeCtrl,
                 decoration: const InputDecoration(
@@ -374,7 +390,46 @@ class _FacultySetupScreenState extends State<FacultySetupScreen> {
                     weeklyHours < 7 ? () => setS(() => weeklyHours++) : null,
               ),
             ]),
-          ]),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<int>(
+              value: semester,
+              decoration: const InputDecoration(labelText: 'Semester'),
+              items: const [
+                DropdownMenuItem(value: 1, child: Text('First semester')),
+                DropdownMenuItem(value: 2, child: Text('Second semester')),
+                DropdownMenuItem(value: 0, child: Text('Both (year-long)')),
+              ],
+              onChanged: (v) => setS(() => semester = v ?? 1),
+            ),
+            if (classOptions.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Joint with (other classes that take this course)',
+                    style: TextStyle(fontSize: 12)),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: classOptions.map((c) {
+                  final id = c['id'] as int;
+                  return FilterChip(
+                    label: Text(c['label'] as String,
+                        style: const TextStyle(fontSize: 11)),
+                    selected: sharedClassIds.contains(id),
+                    onSelected: (v) => setS(() {
+                      if (v) {
+                        sharedClassIds.add(id);
+                      } else {
+                        sharedClassIds.remove(id);
+                      }
+                    }),
+                  );
+                }).toList(),
+              ),
+            ],
+          ]))),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -395,6 +450,8 @@ class _FacultySetupScreenState extends State<FacultySetupScreen> {
         'level_id': levelId,
         'department_id': deptId,
         'weekly_hours': weeklyHours,
+        'semester': semester,
+        'shared_class_ids': sharedClassIds.toList(),
       });
       _loadTree();
     } catch (e) {

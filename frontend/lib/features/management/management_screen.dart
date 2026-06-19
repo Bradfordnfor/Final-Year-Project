@@ -432,7 +432,10 @@ class _UsersTab extends StatefulWidget {
 
 class _UsersTabState extends State<_UsersTab> {
   late final UserApi _api;
+  late final UniversityApi _uniApi;
   List<UserModel> _users = [];
+  List<Faculty> _faculties = [];
+  List<Department> _departments = [];
   bool _loading = true;
   String _search = '';
 
@@ -452,17 +455,29 @@ class _UsersTabState extends State<_UsersTab> {
   @override
   void initState() {
     super.initState();
-    _api = UserApi(ApiClient(token: AuthController.to.token));
+    final client = ApiClient(token: AuthController.to.token);
+    _api = UserApi(client);
+    _uniApi = UniversityApi(client);
     _load();
   }
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    try {
-      final users = await _api.getUsers();
-      setState(() { _users = users; _loading = false; });
-    } catch (_) {
-      setState(() => _loading = false);
+    // Load the three independently: a failure in one (e.g. the user list) must
+    // not blank the faculty/department pickers used by the Add User form.
+    List<UserModel> users = [];
+    List<Faculty> faculties = [];
+    List<Department> departments = [];
+    try { users = await _api.getUsers(); } catch (_) {}
+    try { faculties = await _uniApi.getFaculties(); } catch (_) {}
+    try { departments = await _uniApi.getDepartments(); } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _users = users;
+        _faculties = faculties;
+        _departments = departments;
+        _loading = false;
+      });
     }
   }
 
@@ -471,6 +486,8 @@ class _UsersTabState extends State<_UsersTab> {
     final emailCtrl = TextEditingController();
     final passCtrl = TextEditingController();
     String selectedRole = _roles.first;
+    Faculty? selFaculty;
+    Department? selDept;
 
     await showModalBottomSheet(
       context: context,
@@ -481,51 +498,110 @@ class _UsersTabState extends State<_UsersTab> {
           bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
         ),
         child: StatefulBuilder(
-          builder: (ctx, setSheet) => Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Add User', style: Theme.of(ctx).textTheme.titleLarge),
-              const SizedBox(height: 16),
-              TextField(controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Full Name', border: OutlineInputBorder())),
-              const SizedBox(height: 12),
-              TextField(controller: emailCtrl,
-                  decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
-                  keyboardType: TextInputType.emailAddress),
-              const SizedBox(height: 12),
-              TextField(controller: passCtrl,
-                  decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder()),
-                  obscureText: true),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: selectedRole,
-                decoration: const InputDecoration(labelText: 'Role', border: OutlineInputBorder()),
-                items: _roles.map((r) => DropdownMenuItem(
-                  value: r, child: Text(r.replaceAll('_', ' ')),
-                )).toList(),
-                onChanged: (v) => setSheet(() => selectedRole = v!),
-              ),
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: () async {
-                  try {
-                    await _api.createUser({
+          builder: (ctx, setSheet) {
+            // A faculty head is tied to a faculty; a lecturer is tied to a department.
+            final needsFaculty = selectedRole == 'faculty_head';
+            final needsDept = selectedRole == 'lecturer';
+            final deptsForFaculty = selFaculty == null
+                ? _departments
+                : _departments.where((d) => d.facultyId == selFaculty!.id).toList();
+
+            return SingleChildScrollView(child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Add User', style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: 16),
+                TextField(controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: 'Full Name', border: OutlineInputBorder())),
+                const SizedBox(height: 12),
+                TextField(controller: emailCtrl,
+                    decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
+                    keyboardType: TextInputType.emailAddress),
+                const SizedBox(height: 12),
+                TextField(controller: passCtrl,
+                    decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder()),
+                    obscureText: true),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedRole,
+                  decoration: const InputDecoration(labelText: 'Role', border: OutlineInputBorder()),
+                  items: _roles.map((r) => DropdownMenuItem(
+                    value: r, child: Text(r.replaceAll('_', ' ')),
+                  )).toList(),
+                  onChanged: (v) => setSheet(() {
+                    selectedRole = v!;
+                    selFaculty = null;
+                    selDept = null;
+                  }),
+                ),
+                if (needsFaculty || needsDept) ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<Faculty>(
+                    value: selFaculty,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: needsFaculty ? 'Faculty (required)' : 'Faculty',
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: _faculties.map((f) => DropdownMenuItem(
+                      value: f, child: Text('${f.code} — ${f.name}'),
+                    )).toList(),
+                    onChanged: (v) => setSheet(() { selFaculty = v; selDept = null; }),
+                  ),
+                ],
+                if (needsDept) ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<Department>(
+                    value: selDept,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Department (required)', border: OutlineInputBorder()),
+                    items: deptsForFaculty.map((d) => DropdownMenuItem(
+                      value: d, child: Text('${d.code} — ${d.name}'),
+                    )).toList(),
+                    onChanged: (v) => setSheet(() => selDept = v),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: () async {
+                    if (needsFaculty && selFaculty == null) {
+                      Get.snackbar('Faculty required', 'A faculty head must be assigned to a faculty.');
+                      return;
+                    }
+                    if (needsDept && selDept == null) {
+                      Get.snackbar('Department required', 'A lecturer must be assigned to a department.');
+                      return;
+                    }
+                    final payload = <String, dynamic>{
                       'full_name': nameCtrl.text.trim(),
                       'email': emailCtrl.text.trim(),
                       'password': passCtrl.text,
                       'role': selectedRole,
-                    });
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    await _load();
-                  } catch (e) {
-                    Get.snackbar('Error', 'Failed: $e');
-                  }
-                },
-                child: const Text('Create User'),
-              ),
-            ],
-          ),
+                    };
+                    // Stamp the creating admin's university on every new user, so
+                    // they all belong to (and are listed under) this university.
+                    final adminUniId = AuthController.to.user.value?.universityId;
+                    if (adminUniId != null) payload['university_id'] = adminUniId;
+                    if (selFaculty != null) {
+                      payload['faculty_id'] = selFaculty!.id;
+                      payload['university_id'] = selFaculty!.universityId;
+                    }
+                    if (selDept != null) payload['department_id'] = selDept!.id;
+                    try {
+                      await _api.createUser(payload);
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      await _load();
+                    } catch (e) {
+                      Get.snackbar('Error', 'Failed: $e');
+                    }
+                  },
+                  child: const Text('Create User'),
+                ),
+              ],
+            ));
+          },
         ),
       ),
     );
@@ -643,6 +719,7 @@ class _SemestersTabState extends State<_SemestersTab> {
     final nameCtrl = TextEditingController();
     DateTime? startDate;
     DateTime? endDate;
+    int term = 1;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -693,6 +770,19 @@ class _SemestersTabState extends State<_SemestersTab> {
                     if (d != null) setS(() => endDate = d);
                   },
                 ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  value: term,
+                  decoration: const InputDecoration(
+                    labelText: 'Semester of the year',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text('First semester')),
+                    DropdownMenuItem(value: 2, child: Text('Second semester')),
+                  ],
+                  onChanged: (v) => setS(() => term = v ?? 1),
+                ),
               ],
             ),
             actions: [
@@ -714,6 +804,7 @@ class _SemestersTabState extends State<_SemestersTab> {
         'start_date': _fmtDate(startDate!),
         'end_date': _fmtDate(endDate!),
         'university_id': uid,
+        'term': term,
       });
       _load();
     } catch (e) {
@@ -1286,7 +1377,7 @@ class _CoursesTab extends StatefulWidget {
 class _CoursesTabState extends State<_CoursesTab> {
   late final CourseApi _api;
   List<Course> _courses = [];
-  List<UserModel> _lecturers = [];
+  List<Map<String, dynamic>> _lecturers = [];
   bool _loading = true;
   String _search = '';
   String? _universityName;
@@ -1303,10 +1394,8 @@ class _CoursesTabState extends State<_CoursesTab> {
 
   Future<void> _loadLecturers() async {
     try {
-      final users = await UserApi(ApiClient(token: AuthController.to.token)).getUsers();
-      if (mounted) {
-        setState(() => _lecturers = users.where((u) => u.role == 'lecturer').toList());
-      }
+      final lecturers = await UserApi(ApiClient(token: AuthController.to.token)).getLecturers();
+      if (mounted) setState(() => _lecturers = lecturers);
     } catch (_) {}
   }
 
@@ -1355,6 +1444,7 @@ class _CoursesTabState extends State<_CoursesTab> {
     final nameCtrl = TextEditingController();
     final hoursCtrl = TextEditingController(text: '2');
     String selectedType = _roomTypes.first;
+    int semester = 1;
 
     // Load university name for banner
     try {
@@ -1458,6 +1548,18 @@ class _CoursesTabState extends State<_CoursesTab> {
                     ),
                   ),
                 ]),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  value: semester,
+                  decoration: const InputDecoration(
+                      labelText: 'Semester', border: OutlineInputBorder()),
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text('First semester')),
+                    DropdownMenuItem(value: 2, child: Text('Second semester')),
+                    DropdownMenuItem(value: 0, child: Text('Both (year-long)')),
+                  ],
+                  onChanged: (v) => setSheet(() => semester = v ?? 1),
+                ),
                 const SizedBox(height: 20),
                 FilledButton(
                   onPressed: codeCtrl.text.trim().isEmpty ||
@@ -1470,6 +1572,7 @@ class _CoursesTabState extends State<_CoursesTab> {
                               'name': nameCtrl.text.trim(),
                               'room_type_required': selectedType,
                               'weekly_hours': int.tryParse(hoursCtrl.text) ?? 2,
+                              'semester': semester,
                             });
                             if (ctx.mounted) Navigator.pop(ctx);
                             await _load();
@@ -1514,6 +1617,7 @@ class _CoursesTabState extends State<_CoursesTab> {
     Faculty? selFaculty;
     Department? selDept;
     Level? selLevel;
+    int semester = 1;
 
     await showModalBottomSheet(
       context: context,
@@ -1632,6 +1736,18 @@ class _CoursesTabState extends State<_CoursesTab> {
                       ),
                     ),
                   ]),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    value: semester,
+                    decoration: const InputDecoration(
+                        labelText: 'Semester', border: OutlineInputBorder()),
+                    items: const [
+                      DropdownMenuItem(value: 1, child: Text('First semester')),
+                      DropdownMenuItem(value: 2, child: Text('Second semester')),
+                      DropdownMenuItem(value: 0, child: Text('Both (year-long)')),
+                    ],
+                    onChanged: (v) => setSheet(() => semester = v ?? 1),
+                  ),
                   const SizedBox(height: 20),
                   FilledButton(
                     onPressed: selLevel == null ||
@@ -1648,6 +1764,7 @@ class _CoursesTabState extends State<_CoursesTab> {
                                 'level_id': selLevel!.id,
                                 'weekly_hours':
                                     int.tryParse(hoursCtrl.text) ?? 2,
+                                'semester': semester,
                               });
                               if (ctx.mounted) Navigator.pop(ctx);
                               await _load();
@@ -1683,8 +1800,8 @@ class _CoursesTabState extends State<_CoursesTab> {
             items: [
               const DropdownMenuItem(value: null, child: Text('Unassigned')),
               ..._lecturers.map((l) => DropdownMenuItem(
-                    value: l.id,
-                    child: Text(l.fullName),
+                    value: l['id'] as int,
+                    child: Text(l['full_name'] as String? ?? ''),
                   )),
             ],
             onChanged: (v) => setS(() => selectedId = v),
@@ -1754,13 +1871,10 @@ class _CoursesTabState extends State<_CoursesTab> {
                         ),
                         subtitle: Text(
                           c.lecturerId != null
-                              ? _lecturers.firstWhere(
-                                    (l) => l.id == c.lecturerId,
-                                    orElse: () => UserModel(
-                                      id: 0, email: '', fullName: 'Unknown',
-                                      role: 'lecturer', isActive: false,
-                                    ),
-                                  ).fullName
+                              ? (_lecturers
+                                    .where((l) => l['id'] == c.lecturerId)
+                                    .firstOrNull?['full_name'] as String?)
+                                  ?? 'Unknown'
                               : 'No lecturer assigned',
                           style: TextStyle(
                             color: c.lecturerId == null

@@ -8,12 +8,14 @@ class Course {
   final int? universityId;
   final int? lecturerId;
   final int weeklyHours;
+  final int semester; // 1 = first, 2 = second, 0 = both
 
   const Course({
     required this.id, required this.code, required this.name,
     required this.roomTypeRequired, this.levelId,
     this.departmentId, this.universityId, this.lecturerId,
     this.weeklyHours = 2,
+    this.semester = 1,
   });
 
   factory Course.fromJson(Map<String, dynamic> json) => Course(
@@ -26,5 +28,6 @@ class Course {
         universityId: json['university_id'] as int?,
         lecturerId: json['lecturer_id'] as int?,
         weeklyHours: (json['weekly_hours'] as int?) ?? 2,
+        semester: (json['semester'] as int?) ?? 1,
       );
 }

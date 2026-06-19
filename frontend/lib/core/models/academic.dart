@@ -5,10 +5,12 @@ class Semester {
   final String endDate;
   final bool isActive;
   final int universityId;
+  final int term; // 1 = first semester of the year, 2 = second
 
   const Semester({
     required this.id, required this.name, required this.startDate,
     required this.endDate, required this.isActive, required this.universityId,
+    this.term = 1,
   });
 
   factory Semester.fromJson(Map<String, dynamic> json) => Semester(
@@ -18,6 +20,7 @@ class Semester {
         endDate: json['end_date'] as String,
         isActive: json['is_active'] as bool,
         universityId: json['university_id'] as int,
+        term: (json['term'] as int?) ?? 1,
       );
 }
 

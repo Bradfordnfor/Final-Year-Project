@@ -185,7 +185,7 @@ class _UniversitiesScreenState extends State<UniversitiesScreen> {
       });
       await _load();
       if (mounted) {
-        await _showCreatedConfirmation(createdResult);
+        await _showCreatedConfirmation(createdResult, adminPasswordCtrl.text.trim());
       }
     } catch (e) {
       if (mounted) {
@@ -195,7 +195,7 @@ class _UniversitiesScreenState extends State<UniversitiesScreen> {
     }
   }
 
-  Future<void> _showCreatedConfirmation(Map<String, dynamic>? result) async {
+  Future<void> _showCreatedConfirmation(Map<String, dynamic>? result, String password) async {
     if (result == null) return;
     final email = result['admin_email'] as String;
     await showDialog(
@@ -228,6 +228,9 @@ class _UniversitiesScreenState extends State<UniversitiesScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Email: $email',
+                      style: const TextStyle(fontFamily: 'monospace')),
+                  const SizedBox(height: 4),
+                  Text('Password: $password',
                       style: const TextStyle(fontFamily: 'monospace')),
                   const SizedBox(height: 4),
                   Text('University: ${result['name']}'),

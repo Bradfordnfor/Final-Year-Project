@@ -171,23 +171,34 @@ class _SidebarLayout extends StatelessWidget {
                     ),
                   ),
                   Divider(color: cs.outlineVariant, height: 1),
-                  const SizedBox(height: 8),
-                  const _SectionLabel('Main'),
-                  ...primary.map((d) => _SidebarItem(
-                    dest: d,
-                    isSelected: allDests.indexOf(d) == selected,
-                    onTap: () => onNav(d.route),
-                  )),
-                  if (secondary.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    const _SectionLabel('Tools'),
-                    ...secondary.map((d) => _SidebarItem(
-                      dest: d,
-                      isSelected: allDests.indexOf(d) == selected,
-                      onTap: () => onNav(d.route),
-                    )),
-                  ],
-                  const Spacer(),
+                  // Scrollable nav region: fills the space between the logo and
+                  // the pinned bottom actions, and scrolls if the window is too
+                  // short to show every item — so the sidebar never overflows.
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 8),
+                          const _SectionLabel('Main'),
+                          ...primary.map((d) => _SidebarItem(
+                            dest: d,
+                            isSelected: allDests.indexOf(d) == selected,
+                            onTap: () => onNav(d.route),
+                          )),
+                          if (secondary.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            const _SectionLabel('Tools'),
+                            ...secondary.map((d) => _SidebarItem(
+                              dest: d,
+                              isSelected: allDests.indexOf(d) == selected,
+                              onTap: () => onNav(d.route),
+                            )),
+                          ],
+                          const SizedBox(height: 8),
+                        ],
+                      ),
+                    ),
+                  ),
                   Divider(color: cs.outlineVariant, height: 1),
                   _NotificationTile(),
                   ListTile(
