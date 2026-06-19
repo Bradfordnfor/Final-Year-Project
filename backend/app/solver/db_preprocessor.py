@@ -57,8 +57,20 @@ def build_solver_input(
         db.query(Department).filter(Department.faculty_id.in_(faculty_ids)).all()
     ]
 
-    # Courses for all departments in the selected faculties
-    courses = db.query(Course).filter(Course.department_id.in_(dept_ids)).all()
+    # Only schedule courses that belong to this run's semester. A semester's
+    # `term` (1 or 2) is matched against each course's `semester` (1 or 2, or 0
+    # for year-long courses that run in both). This keeps a first-semester run
+    # from pulling in second-semester courses.
+    semester = db.get(Semester, semester_id)
+    term = semester.term if semester else 1
+    courses = (
+        db.query(Course)
+        .filter(
+            Course.department_id.in_(dept_ids),
+            Course.semester.in_([term, 0]),
+        )
+        .all()
+    )
 
     all_sessions = []
     all_conflicts: list[ConflictFlag] = []

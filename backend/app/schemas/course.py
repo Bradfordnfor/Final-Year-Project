@@ -11,6 +11,7 @@ class CourseCreate(BaseModel):
     university_id: Optional[int] = None
     lecturer_id: Optional[int] = None
     weekly_hours: int = 2
+    semester: int = 1  # 1 = first, 2 = second, 0 = both
 
 
 class CourseUpdate(BaseModel):
@@ -19,6 +20,7 @@ class CourseUpdate(BaseModel):
     room_type_required: Optional[str] = None
     lecturer_id: Optional[int] = None
     weekly_hours: Optional[int] = None
+    semester: Optional[int] = None
 
 
 class CourseOut(BaseModel):
@@ -31,6 +33,7 @@ class CourseOut(BaseModel):
     university_id: Optional[int]
     lecturer_id: Optional[int]
     weekly_hours: int
+    semester: int
 
     model_config = {"from_attributes": True}
 

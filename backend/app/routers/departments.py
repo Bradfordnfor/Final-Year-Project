@@ -9,7 +9,7 @@ router = APIRouter(prefix="/departments", tags=["Departments"])
 
 
 @router.get("/", response_model=list[DepartmentOut])
-def list_departments(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_departments(db: Session = Depends(get_db)):
     return db.query(Department).all()
 
 

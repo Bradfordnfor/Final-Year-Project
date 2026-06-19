@@ -1,5 +1,8 @@
+from tests.conftest import make_university
+
+
 def test_create_semester(client, auth_headers):
-    uni = client.post("/universities/", json={"name": "UB", "slug": "ub"}, headers=auth_headers).json()
+    uni = make_university(client, auth_headers)
     response = client.post("/semesters/", json={
         "name": "First Semester 2025/2026",
         "start_date": "2025-09-01",
@@ -17,7 +20,7 @@ def test_list_semesters(client, auth_headers):
 
 
 def test_add_timeslot_to_semester(client, auth_headers):
-    uni = client.post("/universities/", json={"name": "UB", "slug": "ub"}, headers=auth_headers).json()
+    uni = make_university(client, auth_headers)
     semester = client.post("/semesters/", json={
         "name": "S1", "start_date": "2025-09-01", "end_date": "2026-01-31", "university_id": uni["id"]
     }, headers=auth_headers).json()
@@ -30,7 +33,7 @@ def test_add_timeslot_to_semester(client, auth_headers):
 
 
 def test_list_timeslots_by_semester(client, auth_headers):
-    uni = client.post("/universities/", json={"name": "UB", "slug": "ub"}, headers=auth_headers).json()
+    uni = make_university(client, auth_headers)
     semester = client.post("/semesters/", json={
         "name": "S2", "start_date": "2025-09-01", "end_date": "2026-01-31", "university_id": uni["id"]
     }, headers=auth_headers).json()

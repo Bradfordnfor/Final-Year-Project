@@ -18,6 +18,8 @@ class Course(Base):
     # university_id is set for university-wide courses (no department)
     lecturer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("lecturers.id"), nullable=True)
     weekly_hours: Mapped[int] = mapped_column(Integer, default=2)
+    semester: Mapped[int] = mapped_column(Integer, default=1)
+    # which semester of study this course runs in: 1 = first, 2 = second, 0 = both (year-long)
 
     level: Mapped[Optional["Level"]] = relationship()
     department: Mapped[Optional["Department"]] = relationship(back_populates="courses")

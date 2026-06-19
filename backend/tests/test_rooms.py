@@ -1,5 +1,8 @@
+from tests.conftest import make_university
+
+
 def test_create_room(client, auth_headers):
-    uni = client.post("/universities/", json={"name": "UB", "slug": "ub"}, headers=auth_headers).json()
+    uni = make_university(client, auth_headers)
     building = client.post("/buildings/", json={"name": "FET Block", "university_id": uni["id"]},
                            headers=auth_headers).json()
     response = client.post("/rooms/", json={
@@ -14,7 +17,7 @@ def test_create_room(client, auth_headers):
 
 
 def test_create_outdoor_room(client, auth_headers):
-    uni = client.post("/universities/", json={"name": "UB", "slug": "ub"}, headers=auth_headers).json()
+    uni = make_university(client, auth_headers)
     building = client.post("/buildings/", json={"name": "FAVM Area", "university_id": uni["id"]},
                            headers=auth_headers).json()
     response = client.post("/rooms/", json={
@@ -26,7 +29,7 @@ def test_create_outdoor_room(client, auth_headers):
 
 
 def test_create_room_invalid_type(client, auth_headers):
-    uni = client.post("/universities/", json={"name": "UB", "slug": "ub"}, headers=auth_headers).json()
+    uni = make_university(client, auth_headers)
     building = client.post("/buildings/", json={"name": "FET Block", "university_id": uni["id"]},
                            headers=auth_headers).json()
     response = client.post("/rooms/", json={
@@ -43,7 +46,7 @@ def test_list_rooms(client, auth_headers):
 
 
 def test_update_room_capacity(client, auth_headers):
-    uni = client.post("/universities/", json={"name": "UB", "slug": "ub"}, headers=auth_headers).json()
+    uni = make_university(client, auth_headers)
     building = client.post("/buildings/", json={"name": "FET Block", "university_id": uni["id"]},
                            headers=auth_headers).json()
     room = client.post("/rooms/", json={
@@ -55,7 +58,7 @@ def test_update_room_capacity(client, auth_headers):
 
 
 def test_delete_room(client, auth_headers):
-    uni = client.post("/universities/", json={"name": "UB", "slug": "ub"}, headers=auth_headers).json()
+    uni = make_university(client, auth_headers)
     building = client.post("/buildings/", json={"name": "FET Block", "university_id": uni["id"]},
                            headers=auth_headers).json()
     room = client.post("/rooms/", json={

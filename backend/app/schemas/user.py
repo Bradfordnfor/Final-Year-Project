@@ -34,8 +34,18 @@ class LecturerOut(BaseModel):
     id: int
     user_id: int
     department_id: int
+    full_name: str = ""
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_lecturer(cls, lecturer) -> "LecturerOut":
+        return cls(
+            id=lecturer.id,
+            user_id=lecturer.user_id,
+            department_id=lecturer.department_id,
+            full_name=lecturer.user.full_name if lecturer.user else "",
+        )
 
 
 class LecturerAvailabilityCreate(BaseModel):

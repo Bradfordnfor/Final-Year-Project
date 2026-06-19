@@ -11,7 +11,6 @@ from app.database import get_db
 from app.models.university import Department, Faculty
 from app.models.academic import Level, Class
 from app.models.course import Course, SharedCourse
-from app.models.course import Course
 from app.models.user import User
 from app.core.permissions import require_faculty_head, get_current_user
 
@@ -48,6 +47,23 @@ def list_faculties(
     return []
 
 
+# ─── Public levels (no auth — used by public timetable class filter) ─────────
+
+@router.get("/public-levels")
+def get_public_levels(department_id: int, db: Session = Depends(get_db)):
+    """Returns level numbers and class IDs for a department. No auth required."""
+    levels = db.query(Level).filter(Level.department_id == department_id).all()
+    result = []
+    for level in levels:
+        first_class = level.classes[0] if level.classes else None
+        result.append({
+            "id": level.id,
+            "number": level.number,
+            "class_id": first_class.id if first_class else None,
+        })
+    return result
+
+
 # ─── Faculty tree overview ───────────────────────────────────────────────────
 
 @router.get("/tree")
@@ -78,6 +94,7 @@ def get_faculty_tree(
                         "room_type_required": co.room_type_required,
                         "lecturer_id": co.lecturer_id,
                         "weekly_hours": co.weekly_hours,
+                        "semester": co.semester,
                     }
                     for co in db.query(Course).filter(Course.level_id == level.id).all()
                 ],
@@ -243,6 +260,8 @@ class FacultyCourseCreate(BaseModel):
     department_id: int
     lecturer_id: Optional[int] = None
     weekly_hours: int = 2
+    semester: int = 1  # 1 = first, 2 = second, 0 = both
+    shared_class_ids: list[int] = []  # other classes that jointly attend this course
 
 
 class FacultyCourseOut(BaseModel):
@@ -254,6 +273,7 @@ class FacultyCourseOut(BaseModel):
     department_id: int
     lecturer_id: Optional[int]
     weekly_hours: int
+    semester: int
     model_config = {"from_attributes": True}
 
 
@@ -273,8 +293,14 @@ def create_course(
     level = db.get(Level, payload.level_id)
     if not level or level.department_id != payload.department_id:
         raise HTTPException(status_code=400, detail="Level does not belong to that department")
-    obj = Course(**payload.model_dump())
+    data = payload.model_dump()
+    shared_class_ids = data.pop("shared_class_ids", [])
+    obj = Course(**data)
     db.add(obj)
+    db.flush()
+    # Link the other classes that jointly attend this course.
+    for cid in shared_class_ids:
+        db.add(SharedCourse(course_id=obj.id, class_id=cid))
     db.commit()
     db.refresh(obj)
     return obj
@@ -306,7 +332,9 @@ def update_course(
     ).first()
     if not dept:
         raise HTTPException(status_code=403, detail="Course not in your faculty")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    data.pop("shared_class_ids", None)
+    for k, v in data.items():
         setattr(obj, k, v)
     db.commit()
     db.refresh(obj)

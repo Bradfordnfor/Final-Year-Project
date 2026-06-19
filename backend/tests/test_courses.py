@@ -1,5 +1,8 @@
+from tests.conftest import make_university
+
+
 def setup_department(client, auth_headers):
-    uni = client.post("/universities/", json={"name": "UB", "slug": "ub"}, headers=auth_headers).json()
+    uni = make_university(client, auth_headers)
     faculty = client.post("/faculties/", json={"name": "FET", "code": "FET", "university_id": uni["id"]},
                           headers=auth_headers).json()
     return client.post("/departments/", json={"name": "EE", "code": "EE", "faculty_id": faculty["id"]},

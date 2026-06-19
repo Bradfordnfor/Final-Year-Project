@@ -7,6 +7,7 @@ class SemesterCreate(BaseModel):
     start_date: str
     end_date: str
     university_id: int
+    term: int = 1  # 1 = first semester of the year, 2 = second
 
 
 class SemesterUpdate(BaseModel):
@@ -14,6 +15,7 @@ class SemesterUpdate(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     is_active: Optional[bool] = None
+    term: Optional[int] = None
 
 
 class SemesterOut(BaseModel):
@@ -23,6 +25,7 @@ class SemesterOut(BaseModel):
     end_date: str
     is_active: bool
     university_id: int
+    term: int
 
     model_config = {"from_attributes": True}
 

@@ -63,8 +63,18 @@ def create_run(
 
 
 @router.get("/runs/", response_model=list[RunResponse])
-def list_runs(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    runs = db.query(TimetableRun).all()
+def list_runs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    query = db.query(TimetableRun)
+    # A faculty head only sees runs that include their own faculty.
+    if current_user.role == "faculty_head" and current_user.faculty_id:
+        run_ids = [
+            rf.run_id for rf in
+            db.query(TimetableRunFaculty).filter(
+                TimetableRunFaculty.faculty_id == current_user.faculty_id
+            ).all()
+        ]
+        query = query.filter(TimetableRun.id.in_(run_ids))
+    runs = query.all()
     return [_run_to_response(r) for r in runs]
 
 
@@ -323,6 +333,23 @@ def get_job_status(run_id: int, db: Session = Depends(get_db), _: User = Depends
     return job
 
 
+@router.get("/runs/{run_id}/readiness")
+def get_run_readiness(run_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    """Checklist of what must be in place before this run can generate."""
+    from app.solver.readiness import check_run_readiness, is_ready
+    run = db.get(TimetableRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Timetable run not found")
+    items = check_run_readiness(run, db)
+    return {
+        "ready": is_ready(items),
+        "checks": [
+            {"key": i.key, "label": i.label, "ok": i.ok, "detail": i.detail}
+            for i in items
+        ],
+    }
+
+
 @router.post("/runs/{run_id}/generate")
 def trigger_generation(
     run_id: int,
@@ -330,11 +357,20 @@ def trigger_generation(
     db: Session = Depends(get_db),
     _: User = Depends(require_timetable_officer),
 ):
+    from app.solver.readiness import check_run_readiness, is_ready
     run = db.get(TimetableRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Timetable run not found")
     if run.status != "draft":
         raise HTTPException(status_code=400, detail="Can only generate for a draft run")
+
+    items = check_run_readiness(run, db)
+    if not is_ready(items):
+        failures = [i.detail or i.label for i in items if not i.ok]
+        raise HTTPException(
+            status_code=400,
+            detail="Timetable is not ready to generate. " + " ".join(failures),
+        )
 
     job = GenerationJob(run_id=run_id, status="pending")
     db.add(job)
@@ -530,8 +566,11 @@ def _run_generation(run_id: int, job_id: int) -> None:
                 job.status = "failed"
                 job.error_message = f"Solver returned status: {result.status}"
         else:
-            job.status = "completed"
-            run.generated_at = datetime.utcnow()
+            job.status = "failed"
+            job.error_message = (
+                "No sessions to schedule. Check that courses have lecturers "
+                "assigned and that the selected faculties have courses."
+            )
 
         job.completed_at = datetime.utcnow()
         db.commit()

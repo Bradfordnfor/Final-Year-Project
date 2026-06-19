@@ -11,6 +11,8 @@ class Semester(Base):
     start_date: Mapped[str] = mapped_column(String(20))
     end_date: Mapped[str] = mapped_column(String(20))
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    term: Mapped[int] = mapped_column(Integer, default=1)
+    # which semester of the academic year this is: 1 = first, 2 = second
     university_id: Mapped[int] = mapped_column(ForeignKey("universities.id"))
 
     university: Mapped["University"] = relationship(back_populates="semesters")

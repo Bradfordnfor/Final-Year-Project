@@ -11,7 +11,7 @@ router = APIRouter(prefix="/faculties", tags=["Faculties"])
 
 
 @router.get("/", response_model=list[FacultyOut])
-def list_faculties(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_faculties(db: Session = Depends(get_db)):
     return db.query(Faculty).all()
 
 

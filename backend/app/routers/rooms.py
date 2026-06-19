@@ -9,7 +9,7 @@ router = APIRouter(prefix="/rooms", tags=["Rooms"])
 
 
 @router.get("/", response_model=list[RoomOut])
-def list_rooms(db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_rooms(db: Session = Depends(get_db)):
     return db.query(Room).all()
 
 

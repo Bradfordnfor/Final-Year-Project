@@ -90,7 +90,7 @@ def seed():
             full_name="Super Admin",
             role="super_admin",
             is_active=True,
-            university_id=university.id,
+            university_id=None,
         )
         admin = models.User(
             email="admin@ub.cm",

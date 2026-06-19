@@ -27,6 +27,22 @@ def create_user(
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+    if payload.role == "faculty_head":
+        if not payload.faculty_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A faculty head must be assigned to a faculty. Select a faculty.",
+            )
+        existing_head = db.query(User).filter(
+            User.role == "faculty_head",
+            User.faculty_id == payload.faculty_id,
+            User.is_active == True,  # noqa: E712
+        ).first()
+        if existing_head:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This faculty already has an active head.",
+            )
     data = payload.model_dump()
     password = data.pop("password")
     user = User(**data, hashed_password=get_password_hash(password))
@@ -37,8 +53,14 @@ def create_user(
 
 
 @router.get("/users/", response_model=list[UserOut])
-def list_users(db: Session = Depends(get_db), _=Depends(require_super_admin)):
-    return db.query(User).all()
+def list_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role not in ("super_admin", "university_admin"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    query = db.query(User)
+    # A university admin only sees the users of their own university.
+    if current_user.role == "university_admin":
+        query = query.filter(User.university_id == current_user.university_id)
+    return query.all()
 
 
 @router.get("/users/{user_id}", response_model=UserOut)
@@ -66,7 +88,7 @@ def create_lecturer(
 
 @router.get("/lecturers/", response_model=list[LecturerOut])
 def list_lecturers(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return db.query(Lecturer).all()
+    return [LecturerOut.from_lecturer(l) for l in db.query(Lecturer).all()]
 
 
 @router.get("/lecturers/{lecturer_id}", response_model=LecturerOut)

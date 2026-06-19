@@ -1,5 +1,8 @@
+from tests.conftest import make_university
+
+
 def setup_department(client, auth_headers):
-    uni = client.post("/universities/", json={"name": "UB", "slug": "ub"}, headers=auth_headers).json()
+    uni = make_university(client, auth_headers)
     faculty = client.post("/faculties/", json={"name": "FET", "code": "FET", "university_id": uni["id"]},
                           headers=auth_headers).json()
     return client.post("/departments/", json={"name": "EE", "code": "EE", "faculty_id": faculty["id"]},
@@ -59,7 +62,7 @@ def test_create_student_profile(client, auth_headers):
 
 
 def test_create_faculty_head_with_faculty_id(client, auth_headers):
-    uni = client.post("/universities/", json={"name": "UB", "slug": "ub"}, headers=auth_headers).json()
+    uni = make_university(client, auth_headers)
     faculty = client.post("/faculties/", json={
         "name": "FET", "code": "FET", "university_id": uni["id"],
     }, headers=auth_headers).json()
@@ -92,7 +95,7 @@ def test_add_lecturer_availability(client, auth_headers):
     lecturer = client.post("/lecturers/", json={
         "user_id": user["id"], "department_id": dept["id"],
     }, headers=auth_headers).json()
-    uni = client.post("/universities/", json={"name": "UB2", "slug": "ub2"}, headers=auth_headers).json()
+    uni = make_university(client, auth_headers, name="UB2", slug="ub2")
     semester = client.post("/semesters/", json={
         "name": "S1", "start_date": "2025-09-01", "end_date": "2026-01-31", "university_id": uni["id"],
     }, headers=auth_headers).json()

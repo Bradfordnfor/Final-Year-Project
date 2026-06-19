@@ -72,3 +72,19 @@ def admin_token(client, admin_user):
 @pytest.fixture
 def auth_headers(admin_token):
     return {"Authorization": f"Bearer {admin_token}"}
+
+
+def make_university(client, auth_headers, name="UB", slug="ub"):
+    """Create a university (and its first admin) via the current API and return the JSON.
+
+    POST /universities/ now bundles the first admin account, so tests must send
+    admin_* fields. The admin email is derived from the slug to stay unique when
+    a single test creates more than one university.
+    """
+    return client.post("/universities/", json={
+        "name": name,
+        "slug": slug,
+        "admin_full_name": f"{slug.upper()} Admin",
+        "admin_email": f"admin_{slug}@test.com",
+        "admin_password": "password123",
+    }, headers=auth_headers).json()
