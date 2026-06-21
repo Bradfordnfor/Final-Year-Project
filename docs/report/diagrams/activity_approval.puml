@@ -1,0 +1,64 @@
+@startuml activity_approval
+' Activity diagram: review, approval and publication lifecycle
+skinparam shadowing false
+skinparam activityBackgroundColor #F4F7FF
+skinparam activityBorderColor #1D4ED8
+skinparam activityDiamondBackgroundColor #FFF3E6
+skinparam activityDiamondBorderColor #EA580C
+
+|Timetable Officer|
+start
+:Generate / adjust draft;
+if (any unresolved conflict?) then (yes)
+  :Resolve conflict
+  (add session / rotate groups);
+  detach
+else (no)
+endif
+:Submit run for review;
+
+|System|
+if (every faculty has an active head?) then (yes)
+  :Create a pending approval
+  for each faculty;
+  :Set run = under_review;
+  :Notify each faculty head;
+else (no)
+  :Reject submission
+  (assign heads first);
+  stop
+endif
+
+|Faculty Head|
+:Open run, inspect own
+faculty's section;
+if (section acceptable?) then (approve)
+  :Approve section;
+else (reject)
+  :Reject with comment;
+endif
+
+|System|
+if (this was a rejection?) then (yes)
+  :Set run = draft;
+  :Notify officer to fix;
+  detach
+else (no)
+  if (all faculties approved?) then (yes)
+    :Set run = approved;
+    :Notify officer it can publish;
+  else (no, still pending)
+    :Wait for remaining heads;
+    detach
+  endif
+endif
+
+|Timetable Officer|
+:Publish approved run;
+
+|System|
+:Set run = published;
+:Notify lecturers and heads;
+:Expose run on public page;
+stop
+@enduml

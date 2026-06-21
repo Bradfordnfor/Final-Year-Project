@@ -1,0 +1,73 @@
+@startuml class_pres_timetable
+' Presentation class diagram — Part 2: Timetabling cluster
+' (References Course, Room, TimeSlot, Class, Lecturer, Faculty, User from Part 1)
+skinparam shadowing false
+skinparam classBackgroundColor #F4F7FF
+skinparam classBorderColor #1D4ED8
+skinparam classArrowColor #1D4ED8
+hide empty members
+
+class TimetableRun {
+  +id : int
+  +name : str
+  +status : str
+  +generated_at : datetime
+  +submit_for_review()
+  +publish()
+}
+class TimetableEntry {
+  +id : int
+  +week_pattern : str
+  +is_overcapacity : bool
+  +is_merged : bool
+}
+class TimetableConflict {
+  +id : int
+  +conflict_type : str
+  +resolved : bool
+  +resolution : str
+}
+class GenerationJob {
+  +id : int
+  +status : str
+  +error_message : str
+}
+class FacultyHeadApproval {
+  +id : int
+  +status : str
+  +comment : str
+  +approve()
+  +reject()
+}
+class Notification {
+  +id : int
+  +message : str
+  +notification_type : str
+  +is_read : bool
+}
+
+' Referenced from the academic model (shown as collapsed boxes)
+class Semester
+class Course
+class Room
+class TimeSlot
+class Class
+class Lecturer
+class Faculty
+class User
+
+Semester "1" o-- "*" TimetableRun
+TimetableRun "1" *-- "*" TimetableEntry
+TimetableRun "1" *-- "*" TimetableConflict
+TimetableRun "1" *-- "*" GenerationJob
+TimetableRun "1" *-- "*" FacultyHeadApproval
+TimetableEntry "*" --> "1" Course
+TimetableEntry "*" --> "1" Room
+TimetableEntry "*" --> "1" TimeSlot
+TimetableEntry "*" --> "1" Lecturer
+TimetableEntry "*" --> "*" Class
+FacultyHeadApproval "*" --> "1" Faculty
+FacultyHeadApproval "*" --> "1" User
+Notification "*" --> "1" User
+
+@enduml

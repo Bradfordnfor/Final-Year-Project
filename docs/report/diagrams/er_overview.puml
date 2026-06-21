@@ -1,0 +1,93 @@
+@startuml er_overview
+' ER schema overview for slides — entity boxes + relationships only (no attributes).
+' The full attributed ER diagram (er.puml) stays in the report.
+hide circle
+hide members
+skinparam linetype ortho
+skinparam shadowing false
+skinparam classBackgroundColor #F4F7FF
+skinparam classBorderColor #1D4ED8
+skinparam classArrowColor #1D4ED8
+
+entity University {}
+entity Faculty {}
+entity Department {}
+entity Level {}
+entity Class {}
+entity ClassGroup {}
+entity Building {}
+entity Room {}
+entity Semester {}
+entity TimeSlot {}
+entity Course {}
+entity SharedCourse {}
+entity User {}
+entity Lecturer {}
+entity LecturerAvailability {}
+entity Student {}
+entity TimetableRun {}
+entity TimetableRunFaculty {}
+entity TimetableRunBuilding {}
+entity TimetableEntry {}
+entity TimetableEntryClass {}
+entity TimetableConflict {}
+entity GenerationJob {}
+entity FacultyHeadApproval {}
+entity Notification {}
+
+' Academic hierarchy
+University ||--o{ Faculty
+Faculty ||--o{ Department
+Department ||--o{ Level
+Level ||--o{ Class
+Class ||--o{ ClassGroup
+
+' Physical resources
+University ||--o{ Building
+Building ||--o{ Room
+
+' Time
+University ||--o{ Semester
+Semester ||--o{ TimeSlot
+
+' Courses
+Department ||--o{ Course
+Level ||--o{ Course
+University ||--o{ Course
+Course ||--o{ SharedCourse
+Class ||--o{ SharedCourse
+
+' People
+University ||--o{ User
+Lecturer |o--|| User
+Student |o--|| User
+Department ||--o{ Lecturer
+Lecturer ||--o{ LecturerAvailability
+TimeSlot ||--o{ LecturerAvailability
+Lecturer |o--o{ Course
+Class |o--o{ Student
+ClassGroup |o--o{ Student
+
+' Timetable run and its parts
+Semester ||--o{ TimetableRun
+User ||--o{ TimetableRun
+TimetableRun ||--o{ TimetableRunFaculty
+Faculty ||--o{ TimetableRunFaculty
+TimetableRun ||--o{ TimetableRunBuilding
+Building ||--o{ TimetableRunBuilding
+TimetableRun ||--o{ TimetableEntry
+TimetableEntry ||--o{ TimetableEntryClass
+Class ||--o{ TimetableEntryClass
+Course ||--o{ TimetableEntry
+Lecturer ||--o{ TimetableEntry
+Room ||--o{ TimetableEntry
+TimeSlot ||--o{ TimetableEntry
+ClassGroup |o--o{ TimetableEntry
+TimetableRun ||--o{ TimetableConflict
+TimetableRun ||--o{ GenerationJob
+TimetableRun ||--o{ FacultyHeadApproval
+Faculty ||--o{ FacultyHeadApproval
+User ||--o{ FacultyHeadApproval
+User ||--o{ Notification
+
+@enduml

@@ -1,0 +1,53 @@
+@startuml usecase_pres_b
+' Presentation use case — Part B: Timetabling & Access
+' Actors: Timetable Officer, Lecturer, Student
+left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam actorBorderColor #1D4ED8
+skinparam usecaseBorderColor #1D4ED8
+skinparam usecaseBackgroundColor #F4F7FF
+
+actor "Timetable Officer" as TO
+actor "Lecturer" as LE
+actor "Student" as ST
+
+rectangle "Timetabling & Access" {
+  usecase "Create timetable run" as UC_run
+  usecase "Generate timetable" as UC_gen
+  usecase "Resolve conflicts" as UC_conf
+  usecase "Move a session manually" as UC_move
+  usecase "Submit for review" as UC_submit
+  usecase "Publish timetable" as UC_pub
+  usecase "Export PDF / CSV" as UC_export
+
+  usecase "Set availability" as UC_avail
+  usecase "View own schedule" as UC_own
+
+  usecase "View public timetable\n(filter by class)" as UC_public
+
+  usecase "Receive notifications" as UC_notif
+  usecase "Change password" as UC_pwd
+}
+
+TO --> UC_run
+TO --> UC_gen
+TO --> UC_conf
+TO --> UC_move
+TO --> UC_submit
+TO --> UC_pub
+TO --> UC_export
+TO --> UC_notif
+TO --> UC_pwd
+
+LE --> UC_avail
+LE --> UC_own
+LE --> UC_notif
+LE --> UC_pwd
+
+ST --> UC_public
+
+UC_gen ..> UC_conf : <<extend>>
+UC_pub ..> UC_notif : <<include>>
+
+@enduml

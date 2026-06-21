@@ -1,0 +1,78 @@
+@startuml activity_generation
+' Activity diagram: timetable generation (preprocessing + solving + postprocessing)
+skinparam shadowing false
+skinparam activityBackgroundColor #F4F7FF
+skinparam activityBorderColor #1D4ED8
+skinparam activityDiamondBackgroundColor #FFF3E6
+skinparam activityDiamondBorderColor #EA580C
+
+start
+:Officer creates a timetable run
+(semester, faculties, buildings);
+:Officer triggers generation;
+if (run ready? courses have lecturers;
+rooms of required types; time slots;
+courses in scope) then (no)
+  :Reject — show readiness checklist
+  of what is missing;
+  stop
+else (yes)
+endif
+:Create generation job, mark run busy;
+
+partition "Preprocessing" {
+  :Load courses for the selected faculties;
+  :Load classes, rooms, time slots,
+  lecturer availability;
+  repeat :Take next course with a lecturer;
+    if (room type = lab?) then (yes)
+      :Compute lab split per class;
+      if (groups needed > sessions/week?) then (yes)
+        :Flag lab_split_conflict;
+      else (no)
+        :Create one session per group;
+      endif
+    else (no)
+      :Compute merge decision
+      across attending classes;
+      if (combined population fits
+      largest room + overflow?) then (yes)
+        :Create merged sessions;
+      else (no)
+        :Create separate sessions
+        per class;
+      endif
+    endif
+  repeat while (more courses?) is (yes)
+  -> no;
+  :Persist conflict flags;
+}
+
+partition "Solving (CP-SAT)" {
+  :Build boolean variables
+  a[session, slot, room];
+  :Add hard constraints
+  (each session once; no room,
+  class, lecturer double-booking;
+  room-type match; unavailability);
+  :Search within time limit;
+}
+
+if (solver status feasible/optimal?) then (yes)
+  partition "Postprocessing" {
+    :Write assignments as
+    TimetableEntry rows;
+    :Flag overcapacity / merged entries;
+  }
+  :Mark job completed;
+  :Notify officer
+  (generation complete);
+else (no)
+  :Mark job failed
+  with reason;
+  :Notify officer;
+endif
+
+:Officer reviews generated grid;
+stop
+@enduml

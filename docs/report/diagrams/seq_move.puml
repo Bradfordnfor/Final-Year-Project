@@ -1,0 +1,38 @@
+@startuml seq_move
+' Sequence diagram: manual session move with clash detection
+skinparam shadowing false
+skinparam sequenceArrowColor #1D4ED8
+skinparam sequenceLifeLineBorderColor #1D4ED8
+skinparam participantBorderColor #1D4ED8
+skinparam participantBackgroundColor #F4F7FF
+
+actor "Timetable Officer" as TO
+participant "Flutter Client" as UI
+participant "FastAPI Router" as API
+database "Database" as DB
+
+TO -> UI : Click a session, choose new day/time
+UI -> API : PUT /runs/{id}/entries/move\n{entry_id, time_slot_id, room_id}
+API -> DB : load entry
+alt entry not found
+  API --> UI : 404 Not Found
+end
+
+API -> DB : query lecturer clash\n(same lecturer, same slot, other entry)
+alt lecturer already booked
+  API --> UI : 409 Conflict\n"Lecturer already has a session in that slot"
+  UI --> TO : show inline error, keep old slot
+end
+
+API -> DB : for each attending class,\nquery class clash in target slot
+alt class already booked
+  API --> UI : 409 Conflict\n"Class already has a session in that slot"
+  UI --> TO : show inline error, keep old slot
+end
+
+API -> DB : update entry.time_slot_id / room_id
+API -> DB : commit
+API --> UI : 200 OK (updated entry)
+UI --> TO : grid refreshes with the moved session
+
+@enduml

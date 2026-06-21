@@ -1,0 +1,57 @@
+@startuml seq_approval
+' Sequence diagram: review, approval and publication workflow
+skinparam shadowing false
+skinparam sequenceArrowColor #1D4ED8
+skinparam sequenceLifeLineBorderColor #1D4ED8
+skinparam participantBorderColor #1D4ED8
+skinparam participantBackgroundColor #F4F7FF
+
+actor "Timetable Officer" as TO
+actor "Faculty Head\n(each faculty)" as FH
+participant "Flutter Client" as UI
+participant "FastAPI Router" as API
+database "Database" as DB
+
+TO -> UI : Submit draft for review
+UI -> API : POST /runs/{id}/submit-for-review
+API -> DB : verify status == "draft"
+API -> DB : verify every faculty has an active head
+API -> DB : create FacultyHeadApproval (pending) per faculty
+API -> DB : run.status = "under_review"
+API -> DB : notify each faculty head (timetable_review)
+API --> UI : run under review
+
+== Each faculty head reviews independently ==
+
+FH -> UI : open run, view own faculty section
+UI -> API : GET /runs/{id}/approvals
+API --> UI : approval records
+
+alt head approves
+  FH -> UI : Approve
+  UI -> API : POST /runs/{id}/approvals/{aid}/approve
+  API -> DB : check head owns this approval & run under review
+  API -> DB : approval.status = "approved"
+  API -> DB : if ALL approved -> run.status = "approved"
+  API -> DB : notify officer (timetable_approved)
+  API --> UI : approved
+else head rejects
+  FH -> UI : Reject (+ comment)
+  UI -> API : POST /runs/{id}/approvals/{aid}/reject
+  API -> DB : approval.status = "rejected"
+  API -> DB : run.status = "draft"  (officer must fix & resubmit)
+  API -> DB : notify officer (timetable_rejected)
+  API --> UI : rejected
+end
+
+== Publication ==
+
+TO -> UI : Publish (only enabled when approved)
+UI -> API : POST /runs/{id}/publish
+API -> DB : verify status == "approved"
+API -> DB : run.status = "published"
+API -> DB : notify lecturers/heads (timetable_published)
+API --> UI : published
+note over UI : run now appears on the public page
+
+@enduml

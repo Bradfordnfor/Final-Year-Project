@@ -1,0 +1,60 @@
+@startuml seq_generation
+' Sequence diagram: automatic timetable generation
+skinparam shadowing false
+skinparam sequenceArrowColor #1D4ED8
+skinparam sequenceLifeLineBorderColor #1D4ED8
+skinparam participantBorderColor #1D4ED8
+skinparam participantBackgroundColor #F4F7FF
+
+actor "Timetable Officer" as TO
+participant "Flutter\nClient" as UI
+participant "FastAPI\nRouter" as API
+participant "Generation\nJob (async)" as JOB
+participant "DbPreprocessor" as PRE
+participant "CP-SAT\nSolver" as SOL
+participant "Postprocessor" as POST
+database "Database" as DB
+
+TO -> UI : Click "Generate"
+UI -> API : POST /runs/{id}/generate
+API -> DB : check run.status == "draft"
+API -> DB : check readiness\n(courses have lecturers; rooms of required\ntypes exist; time slots; courses in scope)
+
+alt run not ready
+  API --> UI : 400 Bad Request\n(list of what is missing)
+  UI --> TO : show readiness checklist
+else run ready
+  API -> DB : create GenerationJob (pending)
+  API -> JOB : schedule background task
+  API --> UI : 202 Accepted (job queued)
+
+  note over UI : client polls job-status
+
+  JOB -> DB : job.status = "running"
+  JOB -> PRE : build_solver_input(run, semester, faculties, buildings)
+  PRE -> DB : load courses, classes, rooms, time slots, availability
+  PRE -> PRE : merge shared courses /\nsplit large lab classes
+  PRE --> JOB : SolverInput + ConflictFlags
+  JOB -> DB : persist ConflictFlags as TimetableConflict
+  JOB -> SOL : solve_timetable(SolverInput)
+  SOL -> SOL : build CP-SAT model\n(apply hard constraints)
+  SOL -> SOL : search for feasible assignment
+  SOL --> JOB : SolverResult (assignments, status)
+
+  alt status in {optimal, feasible}
+    JOB -> POST : save_solver_result(run, result)
+    POST -> DB : insert TimetableEntry + TimetableEntryClass rows
+    JOB -> DB : job.status = "completed"
+    JOB -> DB : notify officer (generation_complete)
+  else infeasible / no sessions / error
+    JOB -> DB : job.status = "failed" (+ error_message)
+  end
+
+  UI -> API : GET /runs/{id}/job-status
+  API --> UI : completed
+  UI -> API : GET /runs/{id}/entries
+  API --> UI : timetable grid
+  UI --> TO : display generated timetable
+end
+
+@enduml

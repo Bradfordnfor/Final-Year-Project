@@ -1,0 +1,55 @@
+@startuml class_pres_solver
+' Presentation class diagram — Part 3: Solver layer (generation pipeline)
+left to right direction
+skinparam shadowing false
+skinparam classBackgroundColor #F4F7FF
+skinparam classBorderColor #1D4ED8
+skinparam classArrowColor #1D4ED8
+hide empty members
+
+class DbPreprocessor {
+  +build_solver_input(run, semester, faculties, buildings) : SolverInput
+}
+class Preprocessor {
+  +compute_merge_decision(course, classes, rooms, ...) : ScheduleSession[]
+  +compute_lab_split(course, class, labs, ...) : ScheduleSession[]
+}
+class ScheduleSession {
+  +id : str
+  +course_id : int
+  +lecturer_id : int
+  +room_type_required : str
+  +class_ids : int[]
+  +population : int
+  +is_merged : bool
+}
+class SolverInput {
+  +sessions : ScheduleSession[]
+  +time_slots : dict[]
+  +rooms : dict[]
+  +lecturer_unavailability : dict
+}
+class CpSatSolver {
+  +solve_timetable(input : SolverInput) : SolverResult
+}
+class SolverResult {
+  +assignments : SolverAssignment[]
+  +solve_time_seconds : float
+  +status : str
+}
+class Postprocessor {
+  +save_solver_result(run, result, db)
+}
+class ConflictResolver {
+  +apply_resolution(conflict, resolution, db)
+}
+
+DbPreprocessor ..> Preprocessor
+DbPreprocessor ..> SolverInput
+Preprocessor ..> ScheduleSession
+SolverInput o-- ScheduleSession
+CpSatSolver ..> SolverInput
+CpSatSolver ..> SolverResult
+Postprocessor ..> SolverResult
+
+@enduml

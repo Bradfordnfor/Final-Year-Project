@@ -1,0 +1,297 @@
+@startuml er
+' Entity-Relationship diagram for the Automated Timetable Generation and Management System
+' Render at plantuml.com or with the VS Code PlantUML extension, then export as PNG.
+
+hide circle
+skinparam linetype ortho
+skinparam shadowing false
+skinparam classFontName "Segoe UI"
+skinparam classBackgroundColor #F4F7FF
+skinparam classBorderColor #1D4ED8
+skinparam classArrowColor #1D4ED8
+
+entity University {
+  * id : INTEGER <<PK>>
+  --
+  name : TEXT
+  slug : TEXT
+  overflow_threshold : REAL
+}
+
+entity Faculty {
+  * id : INTEGER <<PK>>
+  --
+  name : TEXT
+  code : TEXT
+  sessions_per_week : INTEGER
+  session_duration_hours : INTEGER
+  university_id : INTEGER <<FK>>
+}
+
+entity Department {
+  * id : INTEGER <<PK>>
+  --
+  name : TEXT
+  code : TEXT
+  faculty_id : INTEGER <<FK>>
+}
+
+entity Level {
+  * id : INTEGER <<PK>>
+  --
+  number : INTEGER
+  department_id : INTEGER <<FK>>
+}
+
+entity Class {
+  * id : INTEGER <<PK>>
+  --
+  name : TEXT
+  population : INTEGER
+  level_id : INTEGER <<FK>>
+}
+
+entity ClassGroup {
+  * id : INTEGER <<PK>>
+  --
+  name : TEXT
+  size : INTEGER
+  class_id : INTEGER <<FK>>
+}
+
+entity Building {
+  * id : INTEGER <<PK>>
+  --
+  name : TEXT
+  description : TEXT
+  university_id : INTEGER <<FK>>
+}
+
+entity Room {
+  * id : INTEGER <<PK>>
+  --
+  name : TEXT
+  capacity : INTEGER
+  room_type : TEXT
+  is_active : BOOLEAN
+  building_id : INTEGER <<FK>>
+}
+
+entity Semester {
+  * id : INTEGER <<PK>>
+  --
+  name : TEXT
+  start_date : TEXT
+  end_date : TEXT
+  is_active : BOOLEAN
+  university_id : INTEGER <<FK>>
+}
+
+entity TimeSlot {
+  * id : INTEGER <<PK>>
+  --
+  day_of_week : TEXT
+  start_time : TEXT
+  end_time : TEXT
+  semester_id : INTEGER <<FK>>
+}
+
+entity Course {
+  * id : INTEGER <<PK>>
+  --
+  code : TEXT
+  name : TEXT
+  room_type_required : TEXT
+  weekly_hours : INTEGER
+  level_id : INTEGER <<FK>>
+  department_id : INTEGER <<FK>>
+  university_id : INTEGER <<FK>>
+  lecturer_id : INTEGER <<FK>>
+}
+
+entity SharedCourse {
+  * id : INTEGER <<PK>>
+  --
+  course_id : INTEGER <<FK>>
+  class_id : INTEGER <<FK>>
+}
+
+entity User {
+  * id : INTEGER <<PK>>
+  --
+  email : TEXT
+  hashed_password : TEXT
+  full_name : TEXT
+  role : TEXT
+  is_active : BOOLEAN
+  university_id : INTEGER <<FK>>
+  department_id : INTEGER <<FK>>
+  faculty_id : INTEGER <<FK>>
+}
+
+entity Lecturer {
+  * id : INTEGER <<PK>>
+  --
+  user_id : INTEGER <<FK>>
+  department_id : INTEGER <<FK>>
+}
+
+entity LecturerAvailability {
+  * id : INTEGER <<PK>>
+  --
+  lecturer_id : INTEGER <<FK>>
+  time_slot_id : INTEGER <<FK>>
+}
+
+entity Student {
+  * id : INTEGER <<PK>>
+  --
+  user_id : INTEGER <<FK>>
+  class_id : INTEGER <<FK>>
+  group_id : INTEGER <<FK>>
+}
+
+entity TimetableRun {
+  * id : INTEGER <<PK>>
+  --
+  name : TEXT
+  status : TEXT
+  semester_id : INTEGER <<FK>>
+  created_by : INTEGER <<FK>>
+  generated_at : DATETIME
+  created_at : DATETIME
+}
+
+entity TimetableRunFaculty {
+  * id : INTEGER <<PK>>
+  --
+  run_id : INTEGER <<FK>>
+  faculty_id : INTEGER <<FK>>
+}
+
+entity TimetableRunBuilding {
+  * id : INTEGER <<PK>>
+  --
+  run_id : INTEGER <<FK>>
+  building_id : INTEGER <<FK>>
+}
+
+entity TimetableEntry {
+  * id : INTEGER <<PK>>
+  --
+  run_id : INTEGER <<FK>>
+  course_id : INTEGER <<FK>>
+  lecturer_id : INTEGER <<FK>>
+  room_id : INTEGER <<FK>>
+  time_slot_id : INTEGER <<FK>>
+  group_id : INTEGER <<FK>>
+  week_pattern : TEXT
+  is_overcapacity : BOOLEAN
+  is_merged : BOOLEAN
+}
+
+entity TimetableEntryClass {
+  * id : INTEGER <<PK>>
+  --
+  entry_id : INTEGER <<FK>>
+  class_id : INTEGER <<FK>>
+}
+
+entity TimetableConflict {
+  * id : INTEGER <<PK>>
+  --
+  run_id : INTEGER <<FK>>
+  conflict_type : TEXT
+  course_id : INTEGER <<FK>>
+  class_id : INTEGER <<FK>>
+  resolved : BOOLEAN
+  resolution : TEXT
+}
+
+entity GenerationJob {
+  * id : INTEGER <<PK>>
+  --
+  run_id : INTEGER <<FK>>
+  status : TEXT
+  error_message : TEXT
+  started_at : DATETIME
+  completed_at : DATETIME
+}
+
+entity FacultyHeadApproval {
+  * id : INTEGER <<PK>>
+  --
+  run_id : INTEGER <<FK>>
+  faculty_id : INTEGER <<FK>>
+  faculty_head_id : INTEGER <<FK>>
+  status : TEXT
+  comment : TEXT
+  decided_at : DATETIME
+}
+
+entity Notification {
+  * id : INTEGER <<PK>>
+  --
+  user_id : INTEGER <<FK>>
+  message : TEXT
+  notification_type : TEXT
+  is_read : BOOLEAN
+  created_at : DATETIME
+}
+
+' --- Academic hierarchy ---
+University ||--o{ Faculty
+Faculty ||--o{ Department
+Department ||--o{ Level
+Level ||--o{ Class
+Class ||--o{ ClassGroup
+
+' --- Physical resources ---
+University ||--o{ Building
+Building ||--o{ Room
+
+' --- Time ---
+University ||--o{ Semester
+Semester ||--o{ TimeSlot
+
+' --- Courses ---
+Department ||--o{ Course
+Level ||--o{ Course
+University ||--o{ Course
+Course ||--o{ SharedCourse
+Class ||--o{ SharedCourse
+
+' --- People ---
+University ||--o{ User
+Lecturer |o--|| User
+Student |o--|| User
+Department ||--o{ Lecturer
+Lecturer ||--o{ LecturerAvailability
+TimeSlot ||--o{ LecturerAvailability
+Lecturer |o--o{ Course
+Class |o--o{ Student
+ClassGroup |o--o{ Student
+
+' --- Timetable run and its parts ---
+Semester ||--o{ TimetableRun
+User ||--o{ TimetableRun
+TimetableRun ||--o{ TimetableRunFaculty
+Faculty ||--o{ TimetableRunFaculty
+TimetableRun ||--o{ TimetableRunBuilding
+Building ||--o{ TimetableRunBuilding
+TimetableRun ||--o{ TimetableEntry
+TimetableEntry ||--o{ TimetableEntryClass
+Class ||--o{ TimetableEntryClass
+Course ||--o{ TimetableEntry
+Lecturer ||--o{ TimetableEntry
+Room ||--o{ TimetableEntry
+TimeSlot ||--o{ TimetableEntry
+ClassGroup |o--o{ TimetableEntry
+TimetableRun ||--o{ TimetableConflict
+TimetableRun ||--o{ GenerationJob
+TimetableRun ||--o{ FacultyHeadApproval
+Faculty ||--o{ FacultyHeadApproval
+User ||--o{ FacultyHeadApproval
+User ||--o{ Notification
+
+@enduml

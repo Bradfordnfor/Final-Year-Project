@@ -1,0 +1,104 @@
+@startuml class_pres_academic
+' Presentation class diagram — Part 1: Academic structure, resources & people
+left to right direction
+skinparam shadowing false
+skinparam classBackgroundColor #F4F7FF
+skinparam classBorderColor #1D4ED8
+skinparam classArrowColor #1D4ED8
+hide empty members
+
+class University {
+  +id : int
+  +name : str
+  +slug : str
+  +overflow_threshold : float
+}
+class Faculty {
+  +id : int
+  +name : str
+  +code : str
+  +sessions_per_week : int
+  +session_duration_hours : int
+}
+class Department {
+  +id : int
+  +name : str
+  +code : str
+}
+class Level {
+  +id : int
+  +number : int
+}
+class Class {
+  +id : int
+  +name : str
+  +population : int
+}
+class ClassGroup {
+  +id : int
+  +name : str
+  +size : int
+}
+class Building {
+  +id : int
+  +name : str
+}
+class Room {
+  +id : int
+  +name : str
+  +capacity : int
+  +room_type : str
+  +is_active : bool
+}
+class Semester {
+  +id : int
+  +name : str
+  +is_active : bool
+}
+class TimeSlot {
+  +id : int
+  +day_of_week : str
+  +start_time : str
+  +end_time : str
+}
+class Course {
+  +id : int
+  +code : str
+  +name : str
+  +room_type_required : str
+  +weekly_hours : int
+}
+class User {
+  +id : int
+  +email : str
+  +full_name : str
+  +role : str
+  +is_active : bool
+}
+class Lecturer {
+  +id : int
+}
+class LecturerAvailability {
+  +id : int
+}
+class Student {
+  +id : int
+}
+
+University "1" o-- "*" Faculty
+Faculty "1" o-- "*" Department
+Department "1" o-- "*" Level
+Level "1" o-- "*" Class
+Class "1" o-- "*" ClassGroup
+University "1" o-- "*" Building
+Building "1" o-- "*" Room
+University "1" o-- "*" Semester
+Semester "1" o-- "*" TimeSlot
+Department "1" o-- "*" Course
+Course "0..1" --> "1" Lecturer
+User "1" -- "0..1" Lecturer
+User "1" -- "0..1" Student
+Lecturer "1" o-- "*" LecturerAvailability
+LecturerAvailability "*" --> "1" TimeSlot
+
+@enduml

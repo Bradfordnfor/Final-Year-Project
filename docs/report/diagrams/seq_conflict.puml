@@ -1,0 +1,41 @@
+@startuml seq_conflict
+' Sequence diagram: resolving a lab-split conflict flagged during generation
+skinparam shadowing false
+skinparam sequenceArrowColor #1D4ED8
+skinparam sequenceLifeLineBorderColor #1D4ED8
+skinparam participantBorderColor #1D4ED8
+skinparam participantBackgroundColor #F4F7FF
+
+actor "Timetable Officer" as TO
+participant "Flutter Client" as UI
+participant "FastAPI Router" as API
+participant "ConflictResolver" as CR
+database "Database" as DB
+
+note over TO, DB : Generation has flagged a lab_split_conflict\n(class needs more groups than there are weekly sessions)
+
+TO -> UI : open Conflicts screen
+UI -> API : GET /runs/{id}/conflicts
+API -> DB : load unresolved conflicts
+API --> UI : conflict list (type, course, details)
+UI --> TO : show conflict + two options
+
+alt officer chooses "add_session"
+  TO -> UI : Resolve > Add session
+  UI -> API : POST /runs/{id}/conflicts/{cid}/resolve\n{resolution: "add_session"}
+  API -> CR : apply_resolution(conflict, "add_session")
+  CR -> DB : find a free slot (no lecturer/class clash) + a lab room
+  CR -> DB : insert extra TimetableEntry per missing group
+else officer chooses "rotate_groups"
+  TO -> UI : Resolve > Rotate groups
+  UI -> API : POST /runs/{id}/conflicts/{cid}/resolve\n{resolution: "rotate_groups"}
+  API -> CR : apply_resolution(conflict, "rotate_groups")
+  CR -> DB : set week_pattern = "rotation_group"\n+ rotation_sequence on the course's entries
+end
+
+CR --> API : done
+API -> DB : conflict.resolved = true, conflict.resolution = choice
+API --> UI : 200 updated conflict
+UI --> TO : conflict cleared; timetable complete
+
+@enduml

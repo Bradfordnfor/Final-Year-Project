@@ -1,0 +1,64 @@
+@startuml seq_auth
+' Sequence diagram: login and role-based authorisation of a subsequent request
+skinparam shadowing false
+skinparam sequenceArrowColor #1D4ED8
+skinparam sequenceLifeLineBorderColor #1D4ED8
+skinparam participantBorderColor #1D4ED8
+skinparam participantBackgroundColor #F4F7FF
+
+actor "User\n(staff)" as U
+participant "Flutter Client" as UI
+participant "Secure Storage" as ST
+participant "FastAPI Router" as API
+participant "Auth /\nRBAC layer" as AUTH
+database "Database" as DB
+
+== Login ==
+
+U -> UI : enter email + password
+UI -> API : POST /auth/login {email, password}
+API -> DB : find user by email
+alt no user OR password wrong
+  API --> UI : 401 Invalid email or password
+  UI --> U : show error
+else inactive account
+  API --> UI : 403 Account inactive
+  UI --> U : show error
+else valid
+  API -> AUTH : create_access_token(sub = user.id)
+  AUTH --> API : signed JWT
+  API --> UI : 200 {access_token, user}
+  UI -> ST : store JWT securely
+  UI --> U : open role-adaptive dashboard
+end
+
+== Subsequent authorised request ==
+
+U -> UI : perform a protected action
+UI -> ST : read JWT
+UI -> API : request + Bearer <JWT>
+API -> AUTH : get_current_user(token)
+AUTH -> AUTH : decode & verify JWT
+alt token invalid / expired
+  AUTH --> API : raise 401
+  API --> UI : 401 Invalid token
+else valid
+  AUTH -> DB : load user by id
+  alt user missing or inactive
+    AUTH --> API : raise 401
+    API --> UI : 401
+  else
+    AUTH -> AUTH : require_roles(...) : role allowed?
+    alt role not permitted
+      AUTH --> API : raise 403
+      API --> UI : 403 Insufficient permissions
+    else permitted
+      AUTH --> API : current_user
+      API -> DB : carry out the action
+      API --> UI : 200 result
+      UI --> U : show result
+    end
+  end
+end
+
+@enduml
