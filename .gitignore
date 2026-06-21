@@ -39,3 +39,8 @@ frontend/**/*.freezed.dart
 # OS
 .DS_Store
 Thumbs.db
+
+# Generated lecturer credentials (contains plaintext passwords)
+lecturer_credentials.csv
+# PlantUML renderer binary (downloaded tool, not source)
+docs/report/diagrams/plantuml.jar
