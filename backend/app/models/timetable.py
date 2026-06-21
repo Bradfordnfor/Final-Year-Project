@@ -69,7 +69,9 @@ class TimetableEntry(Base):
     run_id: Mapped[int] = mapped_column(ForeignKey("timetable_runs.id"))
     course_id: Mapped[int] = mapped_column(ForeignKey("courses.id"))
     lecturer_id: Mapped[int] = mapped_column(ForeignKey("lecturers.id"))
-    room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id"))
+    # Nullable: outdoor sessions are scheduled into a time slot but use no
+    # building room (they happen off-site — a field, farm, or engineering site).
+    room_id: Mapped[Optional[int]] = mapped_column(ForeignKey("rooms.id"), nullable=True)
     time_slot_id: Mapped[int] = mapped_column(ForeignKey("time_slots.id"))
     group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("class_groups.id"), nullable=True)
     week_pattern: Mapped[str] = mapped_column(String(20), default="every_week")

@@ -62,9 +62,28 @@ def create_run(
     return _run_to_response(run)
 
 
+# Which run statuses each role may see in the run list. Officers and admins
+# follow a run through every state; a faculty head only sees it once it is up
+# for review or has been published; a lecturer likewise. Anyone else (e.g. a
+# student hitting this) sees only published runs.
+_ALL_STATUSES = {"draft", "under_review", "approved", "published"}
+_VISIBLE_STATUSES = {
+    "super_admin": _ALL_STATUSES,
+    "university_admin": _ALL_STATUSES,
+    "timetable_officer": _ALL_STATUSES,
+    "faculty_head": {"under_review", "published"},
+    "lecturer": {"under_review", "published"},
+}
+
+
 @router.get("/runs/", response_model=list[RunResponse])
 def list_runs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     query = db.query(TimetableRun)
+
+    # Restrict to the statuses this role is allowed to see.
+    allowed = _VISIBLE_STATUSES.get(current_user.role, {"published"})
+    query = query.filter(TimetableRun.status.in_(allowed))
+
     # A faculty head only sees runs that include their own faculty.
     if current_user.role == "faculty_head" and current_user.faculty_id:
         run_ids = [
@@ -74,6 +93,7 @@ def list_runs(db: Session = Depends(get_db), current_user: User = Depends(get_cu
             ).all()
         ]
         query = query.filter(TimetableRun.id.in_(run_ids))
+
     runs = query.all()
     return [_run_to_response(r) for r in runs]
 
@@ -389,7 +409,7 @@ def resolve_conflict(
     conflict_id: int,
     data: ConflictResolutionRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(require_faculty_head),
+    _: User = Depends(require_timetable_officer),
 ):
     conflict = db.query(TimetableConflict).filter(
         TimetableConflict.id == conflict_id,
@@ -415,7 +435,7 @@ def move_entry(
     run_id: int,
     data: ManualSlotMoveRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(require_faculty_head),
+    _: User = Depends(require_timetable_officer),
 ):
     entry = db.query(TimetableEntry).filter(
         TimetableEntry.id == data.entry_id,
@@ -467,19 +487,69 @@ def move_entry(
 def get_analytics(
     run_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_faculty_head),
+    current_user: User = Depends(require_faculty_head),
 ):
     from collections import Counter
+    from app.models.user import Lecturer
+    from app.models.course import Course
+    from app.models.university import Department
+
     entries = db.query(TimetableEntry).filter(TimetableEntry.run_id == run_id).all()
-    room_usage = Counter(e.room_id for e in entries)
+
+    # Scope: a university admin (or super admin) sees the whole run — every
+    # faculty. A faculty head sees only their own faculty's sessions.
+    if current_user.role == "faculty_head" and current_user.faculty_id:
+        dept_ids = [
+            row[0] for row in
+            db.query(Department.id)
+            .filter(Department.faculty_id == current_user.faculty_id).all()
+        ]
+        faculty_course_ids = {
+            row[0] for row in
+            db.query(Course.id).filter(Course.department_id.in_(dept_ids)).all()
+        } if dept_ids else set()
+        entries = [e for e in entries if e.course_id in faculty_course_ids]
+
+    room_usage = Counter(e.room_id for e in entries if e.room_id is not None)
     lecturer_sessions = Counter(e.lecturer_id for e in entries)
     overcapacity_ids = [e.id for e in entries if e.is_overcapacity]
+
+    # Per-lecturer breakdown: total periods and the courses they teach (with the
+    # number of periods per course). Drives the click-through detail dialog.
+    detail: dict[int, dict] = {}
+    for e in entries:
+        d = detail.setdefault(e.lecturer_id, {"sessions": 0, "courses": {}})
+        d["sessions"] += 1
+        d["courses"][e.course_id] = d["courses"].get(e.course_id, 0) + 1
+
+    lecturers = []
+    for lid, d in detail.items():
+        lect = db.get(Lecturer, lid)
+        name = lect.user.full_name if lect and lect.user else f"Lecturer #{lid}"
+        courses = []
+        for cid, periods in d["courses"].items():
+            c = db.get(Course, cid)
+            courses.append({
+                "code": c.code if c else "?",
+                "name": c.name if c else "",
+                "periods": periods,
+            })
+        courses.sort(key=lambda x: x["code"])
+        lecturers.append({
+            "lecturer_id": lid,
+            "name": name,
+            "total_periods": d["sessions"],
+            "courses": courses,
+        })
+    lecturers.sort(key=lambda x: x["total_periods"], reverse=True)
+
     return {
         "total_entries": len(entries),
         "overcapacity_count": len(overcapacity_ids),
         "overcapacity_entry_ids": overcapacity_ids,
         "room_utilization": dict(room_usage),
         "lecturer_session_counts": dict(lecturer_sessions),
+        "lecturers": lecturers,
     }
 
 
@@ -516,6 +586,30 @@ def mark_notification_read(
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
 
+def clear_run_result(run_id: int, db: Session) -> None:
+    """Remove a run's generated entries (and their class links) and conflicts.
+
+    Used before regenerating so a new timetable replaces the old one instead of
+    stacking on top. Link rows are deleted before entries to respect the foreign
+    key, since a bulk delete does not trigger the ORM cascade.
+    """
+    entry_ids = [
+        e.id for e in
+        db.query(TimetableEntry.id).filter(TimetableEntry.run_id == run_id).all()
+    ]
+    if entry_ids:
+        db.query(TimetableEntryClass).filter(
+            TimetableEntryClass.entry_id.in_(entry_ids)
+        ).delete(synchronize_session=False)
+        db.query(TimetableEntry).filter(
+            TimetableEntry.run_id == run_id
+        ).delete(synchronize_session=False)
+    db.query(TimetableConflict).filter(
+        TimetableConflict.run_id == run_id
+    ).delete(synchronize_session=False)
+    db.commit()
+
+
 def _run_generation(run_id: int, job_id: int) -> None:
     from app.database import SessionLocal
     from app.solver.db_preprocessor import build_solver_input
@@ -530,6 +624,12 @@ def _run_generation(run_id: int, job_id: int) -> None:
         job.status = "running"
         job.started_at = datetime.utcnow()
         db.commit()
+
+        # A draft run can be generated more than once. Clear the previous
+        # result first so we REPLACE it rather than stacking a second timetable
+        # on top — stacking is what produced duplicate sessions and same-class
+        # clashes.
+        clear_run_result(run_id, db)
 
         faculty_ids = [rf.faculty_id for rf in run.faculties]
         building_ids = [rb.building_id for rb in run.buildings]

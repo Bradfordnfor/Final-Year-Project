@@ -9,11 +9,13 @@ def save_solver_result(
     db: Session,
 ) -> None:
     for assignment in result.assignments:
+        # A negative room id is a virtual outdoor room — store it as no room.
+        room_id = assignment.room_id if assignment.room_id >= 0 else None
         entry = TimetableEntry(
             run_id=run.id,
             course_id=assignment.session.course_id,
             lecturer_id=assignment.session.lecturer_id,
-            room_id=assignment.room_id,
+            room_id=room_id,
             time_slot_id=assignment.time_slot_id,
             group_id=assignment.session.group_id,
             week_pattern="every_week",

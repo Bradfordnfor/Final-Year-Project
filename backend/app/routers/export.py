@@ -18,10 +18,32 @@ from app.core.permissions import get_current_user
 router = APIRouter(prefix="/export", tags=["Export"])
 
 
-def _get_entries_with_details(run_id: int, db: Session) -> list[dict]:
+def _resolve_class_filter(class_ids: str | None,
+                          class_id: int | None) -> set[int] | None:
+    """Build the set of class IDs to filter by from the request params.
+
+    `class_ids` is a comma-separated list (faculty/department/level scope);
+    `class_id` is the legacy single-class param. Returns None for no filter.
+    """
+    if class_ids:
+        parsed = {int(x) for x in class_ids.split(",") if x.strip().isdigit()}
+        return parsed or None
+    if class_id is not None:
+        return {class_id}
+    return None
+
+
+def _get_entries_with_details(run_id: int, db: Session,
+                              class_ids: set[int] | None = None) -> list[dict]:
     entries = db.query(TimetableEntry).filter(TimetableEntry.run_id == run_id).all()
     rows = []
     for entry in entries:
+        # When a class filter is given, keep only sessions attended by at least
+        # one of those classes (a single class, a department, or a faculty).
+        if class_ids is not None and not (
+            {ec.class_id for ec in entry.entry_classes} & class_ids
+        ):
+            continue
         timeslot = db.get(TimeSlot, entry.time_slot_id)
         course = db.get(Course, entry.course_id)
         room = db.get(Room, entry.room_id)
@@ -38,7 +60,7 @@ def _get_entries_with_details(run_id: int, db: Session) -> list[dict]:
             "Course": f"{course.code} — {course.name}" if course else "",
             "Classes": ", ".join(class_names),
             "Lecturer": lecturer_name,
-            "Room": room.name if room else "",
+            "Room": room.name if room else "Outdoor / off-site",
             "Capacity": str(room.capacity) if room else "",
             "Overcapacity": "YES" if entry.is_overcapacity else "No",
             "Week Pattern": entry.week_pattern,
@@ -49,6 +71,8 @@ def _get_entries_with_details(run_id: int, db: Session) -> list[dict]:
 @router.get("/runs/{run_id}/csv")
 def export_csv(
     run_id: int,
+    class_id: int | None = None,
+    class_ids: str | None = None,
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
@@ -56,7 +80,8 @@ def export_csv(
     if not run:
         raise HTTPException(status_code=404, detail="Timetable run not found")
 
-    rows = _get_entries_with_details(run_id, db)
+    ids = _resolve_class_filter(class_ids, class_id)
+    rows = _get_entries_with_details(run_id, db, ids)
     if not rows:
         raise HTTPException(status_code=404, detail="No entries to export")
 
@@ -66,16 +91,19 @@ def export_csv(
     writer.writerows(rows)
     output.seek(0)
 
+    suffix = "_filtered" if ids else ""
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=timetable_run_{run_id}.csv"},
+        headers={"Content-Disposition": f"attachment; filename=timetable_run_{run_id}{suffix}.csv"},
     )
 
 
 @router.get("/runs/{run_id}/pdf")
 def export_pdf(
     run_id: int,
+    class_id: int | None = None,
+    class_ids: str | None = None,
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
@@ -83,7 +111,8 @@ def export_pdf(
     if not run:
         raise HTTPException(status_code=404, detail="Timetable run not found")
 
-    rows = _get_entries_with_details(run_id, db)
+    ids = _resolve_class_filter(class_ids, class_id)
+    rows = _get_entries_with_details(run_id, db, ids)
     if not rows:
         raise HTTPException(status_code=404, detail="No entries to export")
 
@@ -111,8 +140,9 @@ def export_pdf(
     ])
     buffer.seek(0)
 
+    suffix = "_filtered" if ids else ""
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=timetable_run_{run_id}.pdf"},
+        headers={"Content-Disposition": f"attachment; filename=timetable_run_{run_id}{suffix}.pdf"},
     )

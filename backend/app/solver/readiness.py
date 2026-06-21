@@ -8,9 +8,10 @@ building -> room scoping) and reports a checklist. If any check fails, the
 run is not ready and generation is blocked.
 """
 from dataclasses import dataclass
+from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session
 
-from app.models.university import Department
+from app.models.university import Department, Faculty
 from app.models.academic import TimeSlot, Semester
 from app.models.course import Course
 from app.models.room import Room
@@ -77,13 +78,26 @@ def check_run_readiness(run, db: Session) -> list[ReadinessItem]:
         db.query(Department).filter(Department.faculty_id.in_(faculty_ids)).all()
     ] if faculty_ids else []
     # Match the generator: only this semester's courses (term, plus year-long).
+    # Includes department courses of the selected faculties AND the university's
+    # university-wide courses (no department), which every class sits.
     semester = db.get(Semester, run.semester_id)
     term = semester.term if semester else 1
+    university_id = None
+    if faculty_ids:
+        fac = db.query(Faculty).filter(Faculty.id.in_(faculty_ids)).first()
+        university_id = fac.university_id if fac else None
+    scope_conditions = []
+    if dept_ids:
+        scope_conditions.append(Course.department_id.in_(dept_ids))
+    if university_id is not None:
+        scope_conditions.append(
+            and_(Course.university_id == university_id, Course.department_id.is_(None))
+        )
     courses = (
         db.query(Course)
-        .filter(Course.department_id.in_(dept_ids), Course.semester.in_([term, 0]))
+        .filter(Course.semester.in_([term, 0]), or_(*scope_conditions))
         .all()
-        if dept_ids else []
+        if scope_conditions else []
     )
 
     # 5. There are courses to schedule
@@ -104,8 +118,12 @@ def check_run_readiness(run, db: Session) -> list[ReadinessItem]:
         "These courses have no lecturer: " + ", ".join(sorted(c.code for c in unassigned)),
     ))
 
-    # 7. A room exists for each room type the courses require
-    required_types = {c.room_type_required for c in courses if c.room_type_required}
+    # 7. A room exists for each room type the courses require. Outdoor courses
+    #    are excluded: they run off-site and need no building room at all.
+    required_types = {
+        c.room_type_required for c in courses
+        if c.room_type_required and c.room_type_required != "outdoor"
+    }
     available_types = {r.room_type for r in active_rooms}
     missing_types = sorted(required_types - available_types)
     items.append(ReadinessItem(

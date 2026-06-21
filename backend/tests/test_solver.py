@@ -103,6 +103,26 @@ def test_overcapacity_flagged():
     assert result.assignments[0].is_overcapacity is True
 
 
+def test_prefers_best_capacity_fit():
+    # One slot, two rooms — both sessions share the slot in different rooms.
+    # The big (joint-style) session must take the big hall and the small class
+    # the small room, not the other way round.
+    sessions = [
+        make_session("big", course_id=1, lecturer_id=1, class_ids=[1], population=180),
+        make_session("small", course_id=2, lecturer_id=2, class_ids=[2], population=60),
+    ]
+    slots = [make_slot(1, "Monday")]
+    rooms = [make_room(1, 200), make_room(2, 100)]
+    result = solve_timetable(SolverInput(
+        sessions=sessions, time_slots=slots, rooms=rooms,
+        lecturer_unavailability={},
+    ))
+    assert result.status in ("optimal", "feasible")
+    by_session = {a.session.id: a.room_id for a in result.assignments}
+    assert by_session["big"] == 1    # 200-seat hall
+    assert by_session["small"] == 2  # 100-seat room
+
+
 def test_infeasible_returns_infeasible_status():
     sessions = [
         make_session("s1", 1, 99, [1], 30),

@@ -106,6 +106,50 @@ def test_empty_run_reports_missing_faculties_and_buildings(db, admin_user):
     assert {"faculties", "buildings", "courses"}.issubset(failed)
 
 
+# ─── Outdoor courses need no building room ────────────────────────────────────
+
+def test_outdoor_course_is_ready_without_a_matching_room(db, admin_user):
+    # The only room is a lecture hall, but an outdoor course needs no room.
+    run, course, _room = _build_ready_run(db, admin_user.id)
+    course.room_type_required = "outdoor"
+    db.commit()
+    items = check_run_readiness(run, db)
+    assert is_ready(items), _failed_keys(items)
+    assert "room_types" not in _failed_keys(items)
+
+
+def test_outdoor_session_is_scheduled_with_no_room(db, admin_user):
+    from app.solver.db_preprocessor import build_solver_input
+    from app.solver.solver import solve_timetable
+    from app.solver.postprocessor import save_solver_result
+    from app.models.timetable import TimetableEntry
+
+    run, course, _room = _build_ready_run(db, admin_user.id)
+    course.room_type_required = "outdoor"
+    course.weekly_hours = 1  # one session fits the single time slot
+    db.commit()
+
+    faculty_ids = [rf.faculty_id for rf in run.faculties]
+    building_ids = [rb.building_id for rb in run.buildings]
+    solver_input, _conflicts = build_solver_input(
+        run_id=run.id, semester_id=run.semester_id,
+        faculty_ids=faculty_ids, building_ids=building_ids, db=db,
+    )
+    # A virtual outdoor room (negative id) was injected for the outdoor session.
+    assert any(r["id"] < 0 and r["room_type"] == "outdoor"
+               for r in solver_input.rooms)
+
+    result = solve_timetable(solver_input)
+    assert result.status in ("optimal", "feasible")
+    save_solver_result(run, result, db)
+
+    entries = db.query(TimetableEntry).filter(
+        TimetableEntry.run_id == run.id).all()
+    assert entries, "the outdoor course should have been scheduled"
+    assert all(e.room_id is None for e in entries), \
+        "outdoor sessions must be stored with no room"
+
+
 # ─── Generate endpoint guard ──────────────────────────────────────────────────
 
 def test_generate_blocked_when_not_ready(client, auth_headers, db, admin_user):
@@ -176,6 +220,9 @@ def test_second_head_for_same_faculty_rejected(client, auth_headers, db):
 def test_faculty_head_only_sees_runs_for_their_faculty(client, db, admin_user):
     run, _course, _room = _build_ready_run(db, admin_user.id)
     run_faculty_id = run.faculties[0].faculty_id
+    # A faculty head only sees a run once it is under review or published, so put
+    # both runs in a head-visible state to isolate the faculty-scoping check.
+    run.status = "under_review"
 
     # A second faculty + a run that does NOT include the head's faculty
     other_uni = University(name="UB2", slug="ub2-scope", overflow_threshold=0.2)
@@ -184,7 +231,7 @@ def test_faculty_head_only_sees_runs_for_their_faculty(client, db, admin_user):
                         session_duration_hours=2, university_id=other_uni.id)
     db.add(other_fac); db.flush()
     other_run = TimetableRun(name="Other", semester_id=run.semester_id,
-                             created_by=admin_user.id, status="draft")
+                             created_by=admin_user.id, status="under_review")
     db.add(other_run); db.flush()
     db.add(TimetableRunFaculty(run_id=other_run.id, faculty_id=other_fac.id))
 

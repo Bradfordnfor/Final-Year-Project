@@ -91,6 +91,39 @@ def list_lecturers(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return [LecturerOut.from_lecturer(l) for l in db.query(Lecturer).all()]
 
 
+# NOTE: must be declared before "/lecturers/{lecturer_id}" so "me" is not
+# matched as an integer id.
+@router.get("/lecturers/me", response_model=LecturerOut)
+def get_my_lecturer_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The current lecturer's own profile, used to manage their availability.
+
+    A lecturer account does not always have a Lecturer profile (only bulk
+    import creates one). We provision it on first use so any lecturer can set
+    their availability, as long as their account is linked to a department.
+    """
+    if current_user.role != "lecturer":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only lecturers have an availability profile",
+        )
+    lecturer = db.query(Lecturer).filter(Lecturer.user_id == current_user.id).first()
+    if not lecturer:
+        if current_user.department_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Your account is not linked to a department. Ask an "
+                       "administrator to set your department before setting availability.",
+            )
+        lecturer = Lecturer(user_id=current_user.id, department_id=current_user.department_id)
+        db.add(lecturer)
+        db.commit()
+        db.refresh(lecturer)
+    return LecturerOut.from_lecturer(lecturer)
+
+
 @router.get("/lecturers/{lecturer_id}", response_model=LecturerOut)
 def get_lecturer(lecturer_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     obj = db.get(Lecturer, lecturer_id)
@@ -99,12 +132,30 @@ def get_lecturer(lecturer_id: int, db: Session = Depends(get_db), _=Depends(get_
     return obj
 
 
+# Roles that may manage any lecturer's availability. A lecturer may manage
+# only their own (checked against their Lecturer record below).
+_AVAILABILITY_MANAGER_ROLES = (
+    "super_admin", "university_admin", "faculty_head", "timetable_officer",
+)
+
+
+def _assert_can_manage_availability(current_user: User, lecturer_id: int, db: Session) -> None:
+    if current_user.role in _AVAILABILITY_MANAGER_ROLES:
+        return
+    if current_user.role == "lecturer":
+        own = db.query(Lecturer).filter(Lecturer.user_id == current_user.id).first()
+        if own and own.id == lecturer_id:
+            return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+
 @router.post("/lecturers/availability/", response_model=LecturerAvailabilityOut, status_code=status.HTTP_201_CREATED)
 def add_availability(
     payload: LecturerAvailabilityCreate,
     db: Session = Depends(get_db),
-    _=Depends(require_timetable_officer),
+    current_user: User = Depends(get_current_user),
 ):
+    _assert_can_manage_availability(current_user, payload.lecturer_id, db)
     obj = LecturerAvailability(**payload.model_dump())
     db.add(obj)
     db.commit()
@@ -125,11 +176,12 @@ def get_lecturer_availability(
 def delete_availability(
     availability_id: int,
     db: Session = Depends(get_db),
-    _=Depends(require_timetable_officer),
+    current_user: User = Depends(get_current_user),
 ):
     obj = db.get(LecturerAvailability, availability_id)
     if not obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability record not found")
+    _assert_can_manage_availability(current_user, obj.lecturer_id, db)
     db.delete(obj)
     db.commit()
 
@@ -177,58 +229,105 @@ def bulk_import_lecturers(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Bulk-create lecturer accounts from a human-readable CSV.
+
+    Columns: name, email, faculty, department, password (password optional).
+    Faculty and department are matched by name (case-insensitive) within the
+    importing admin's own university — no IDs needed. Each row is independent:
+    a bad row is skipped with a reason rather than aborting the whole import.
     """
-    CSV columns: full_name, email, department_id, faculty_id, university_id
-    Creates a User (role=lecturer) and Lecturer profile for each row.
-    Returns created accounts with auto-generated passwords.
-    """
+    from app.models.university import Faculty, Department
+
     if current_user.role not in ("super_admin", "university_admin"):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if current_user.university_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Bulk import must be run by a university administrator; "
+                   "it imports into that admin's university.",
+        )
+    university_id = current_user.university_id
 
-    content = file.file.read().decode("utf-8")
+    content = file.file.read().decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(content))
 
-    required_cols = {"full_name", "email", "department_id"}
+    required_cols = {"name", "email", "faculty", "department"}
     if not required_cols.issubset(set(reader.fieldnames or [])):
         raise HTTPException(
             status_code=400,
-            detail=f"CSV must contain columns: {required_cols}",
+            detail="CSV must contain columns: name, email, faculty, department "
+                   "(password is optional).",
         )
+
+    # Index this university's faculties and departments by lowercased name.
+    faculties = db.query(Faculty).filter(
+        Faculty.university_id == university_id).all()
+    fac_by_name = {f.name.strip().lower(): f for f in faculties}
+    fac_ids = [f.id for f in faculties]
+    departments = (
+        db.query(Department).filter(Department.faculty_id.in_(fac_ids)).all()
+        if fac_ids else []
+    )
+    dept_by_key = {
+        (d.faculty_id, d.name.strip().lower()): d for d in departments
+    }
 
     created = []
     skipped = []
 
     for row in reader:
-        email = row["email"].strip()
-        full_name = row["full_name"].strip()
-        department_id = int(row["department_id"].strip())
-        faculty_id = int(row["faculty_id"].strip()) if row.get("faculty_id", "").strip() else None
-        university_id = int(row["university_id"].strip()) if row.get("university_id", "").strip() else None
+        name = (row.get("name") or "").strip()
+        email = (row.get("email") or "").strip()
+        faculty_name = (row.get("faculty") or "").strip()
+        department_name = (row.get("department") or "").strip()
+        password = (row.get("password") or "").strip()
+
+        if not (name and email and faculty_name and department_name):
+            skipped.append({"email": email or "(missing)",
+                            "reason": "missing required field"})
+            continue
+
+        faculty = fac_by_name.get(faculty_name.lower())
+        if not faculty:
+            skipped.append({"email": email,
+                            "reason": f"faculty '{faculty_name}' not found"})
+            continue
+
+        dept = dept_by_key.get((faculty.id, department_name.lower()))
+        if not dept:
+            skipped.append({
+                "email": email,
+                "reason": f"department '{department_name}' not found in "
+                          f"faculty '{faculty_name}'",
+            })
+            continue
 
         if db.query(User).filter(User.email == email).first():
             skipped.append({"email": email, "reason": "already exists"})
             continue
 
-        temp_password = secrets.token_urlsafe(10)
+        generated = not password
+        if generated:
+            password = secrets.token_urlsafe(8)
+
         user = User(
             email=email,
-            full_name=full_name,
-            hashed_password=get_password_hash(temp_password),
+            full_name=name,
+            hashed_password=get_password_hash(password),
             role="lecturer",
-            faculty_id=faculty_id,
+            is_active=True,
             university_id=university_id,
+            faculty_id=faculty.id,
+            department_id=dept.id,
         )
         db.add(user)
         db.flush()
+        db.add(Lecturer(user_id=user.id, department_id=dept.id))
 
-        lecturer = Lecturer(user_id=user.id, department_id=department_id)
-        db.add(lecturer)
-
-        created.append({
-            "email": email,
-            "full_name": full_name,
-            "temp_password": temp_password,
-        })
+        entry = {"name": name, "email": email}
+        if generated:
+            entry["temp_password"] = password
+        created.append(entry)
 
     db.commit()
     return {"created": created, "skipped": skipped}

@@ -29,7 +29,7 @@ class TimetableEntryResponse(BaseModel):
     run_id: int
     course_id: int
     lecturer_id: int
-    room_id: int
+    room_id: Optional[int] = None  # null for outdoor / off-site sessions
     time_slot_id: int
     group_id: Optional[int]
     week_pattern: str

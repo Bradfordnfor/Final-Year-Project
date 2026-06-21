@@ -47,6 +47,63 @@ def compute_merge_decision(
         return sessions, None
 
 
+def compute_university_wide_sessions(
+    course: dict,
+    classes: list[dict],
+    rooms: list[dict],
+    lecturer_id: int,
+    sessions_per_week: int,
+    overflow_threshold: float,
+) -> list[ScheduleSession]:
+    """Build sessions for a university-wide course, sat by every class.
+
+    To keep the number of sessions (and the lecturer's load) low, classes are
+    grouped so that each group's combined population fits the largest suitable
+    hall plus the university's overflow allowance. Each group becomes one
+    session, repeated `sessions_per_week` times. A class too big for any hall
+    lands in a group on its own and is flagged over capacity downstream.
+    """
+    if not classes:
+        return []
+
+    compatible = [r for r in rooms if r["room_type"] == course["room_type_required"]]
+    if compatible:
+        largest = max(r["capacity"] for r in compatible)
+        cap = largest * (1 + overflow_threshold)
+    else:
+        # No capacity-bound room (e.g. outdoor): everyone in a single group.
+        cap = float("inf")
+
+    # First-fit-decreasing bin packing: place the biggest classes first.
+    groups: list[dict] = []
+    for cls in sorted(classes, key=lambda c: c["population"], reverse=True):
+        placed = False
+        for g in groups:
+            if g["pop"] + cls["population"] <= cap:
+                g["classes"].append(cls)
+                g["pop"] += cls["population"]
+                placed = True
+                break
+        if not placed:
+            groups.append({"classes": [cls], "pop": cls["population"]})
+
+    sessions: list[ScheduleSession] = []
+    for gi, g in enumerate(groups):
+        for n in range(1, sessions_per_week + 1):
+            sessions.append(ScheduleSession(
+                id=f"course_{course['id']}_uwgroup_{gi}_session_{n}",
+                course_id=course["id"],
+                course_code=course["code"],
+                lecturer_id=lecturer_id,
+                room_type_required=course["room_type_required"],
+                class_ids=[c["id"] for c in g["classes"]],
+                population=g["pop"],
+                session_number=n,
+                is_merged=len(g["classes"]) > 1,
+            ))
+    return sessions
+
+
 def compute_lab_split(
     course: dict,
     student_class: dict,

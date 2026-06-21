@@ -6,7 +6,9 @@ from app.models.course import Course, SharedCourse
 from app.models.room import Room
 from app.models.user import Lecturer, LecturerAvailability
 from app.solver.models import SolverInput, ConflictFlag
-from app.solver.preprocessor import compute_merge_decision, compute_lab_split
+from app.solver.preprocessor import (
+    compute_merge_decision, compute_lab_split, compute_university_wide_sessions,
+)
 
 
 def build_solver_input(
@@ -124,6 +126,61 @@ def build_solver_input(
             all_sessions.extend(sessions)
             if conflict:
                 all_conflicts.append(conflict)
+
+    # University-wide courses (set by the university admin, no department) are
+    # sat by EVERY class in the run's faculties. Classes are packed into shared
+    # sessions that fit the largest hall + allowance, so several classes can sit
+    # the course together in one period.
+    university_id = faculty.university_id if faculty else None
+    if university_id is not None:
+        run_classes = (
+            db.query(Class)
+            .join(Level, Level.id == Class.level_id)
+            .join(Department, Department.id == Level.department_id)
+            .filter(Department.faculty_id.in_(faculty_ids))
+            .all()
+        )
+        run_class_dicts = [
+            {"id": c.id, "population": c.population} for c in run_classes
+        ]
+        uni_courses = (
+            db.query(Course)
+            .filter(
+                Course.university_id == university_id,
+                Course.department_id.is_(None),
+                Course.semester.in_([term, 0]),
+            )
+            .all()
+        )
+        for course in uni_courses:
+            if not course.lecturer_id:
+                continue
+            course_dict = {
+                "id": course.id, "code": course.code,
+                "room_type_required": course.room_type_required,
+            }
+            all_sessions.extend(compute_university_wide_sessions(
+                course=course_dict,
+                classes=run_class_dicts,
+                rooms=rooms,
+                lecturer_id=course.lecturer_id,
+                sessions_per_week=course.weekly_hours,
+                overflow_threshold=overflow_threshold,
+            ))
+
+    # Outdoor sessions happen off-site (a field, farm, or engineering site) and
+    # need no building room. To keep the solver uniform we give each outdoor
+    # session its own virtual room: a negative-id, outdoor-typed, effectively
+    # unlimited-capacity placeholder. Because each virtual room serves exactly
+    # one session, several outdoor sessions can run in the same time slot, and
+    # the postprocessor stores these placements with no room at all.
+    outdoor_sessions = [s for s in all_sessions if s.room_type_required == "outdoor"]
+    for i, _ in enumerate(outdoor_sessions):
+        rooms.append({
+            "id": -(i + 1),          # negative id marks a virtual room
+            "capacity": 10**9,        # never over capacity
+            "room_type": "outdoor",
+        })
 
     return (
         SolverInput(
