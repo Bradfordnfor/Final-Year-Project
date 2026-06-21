@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:get/get.dart';
@@ -1380,6 +1381,7 @@ class _CoursesTabState extends State<_CoursesTab> {
   List<Map<String, dynamic>> _lecturers = [];
   bool _loading = true;
   String _search = '';
+  bool _unassignedOnly = false;
   String? _universityName;
 
   static const _roomTypes = ['lecture_hall', 'lab', 'outdoor'];
@@ -1831,9 +1833,14 @@ class _CoursesTabState extends State<_CoursesTab> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _courses.where((c) =>
-        c.code.toLowerCase().contains(_search.toLowerCase()) ||
-        c.name.toLowerCase().contains(_search.toLowerCase())).toList();
+    final unassignedCount = _courses.where((c) => c.lecturerId == null).length;
+    final filtered = _courses.where((c) {
+      final matchesSearch =
+          c.code.toLowerCase().contains(_search.toLowerCase()) ||
+              c.name.toLowerCase().contains(_search.toLowerCase());
+      final matchesAssignment = !_unassignedOnly || c.lecturerId == null;
+      return matchesSearch && matchesAssignment;
+    }).toList();
 
     if (_loading) return const Center(child: CircularProgressIndicator());
     return Scaffold(
@@ -1844,7 +1851,7 @@ class _CoursesTabState extends State<_CoursesTab> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             child: TextField(
               decoration: const InputDecoration(
                 hintText: 'Search courses…',
@@ -1853,6 +1860,23 @@ class _CoursesTabState extends State<_CoursesTab> {
                 isDense: true,
               ),
               onChanged: (v) => setState(() => _search = v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FilterChip(
+                avatar: Icon(
+                  _unassignedOnly
+                      ? Icons.person_off
+                      : Icons.person_off_outlined,
+                  size: 18,
+                ),
+                label: Text('Needs lecturer ($unassignedCount)'),
+                selected: _unassignedOnly,
+                onSelected: (v) => setState(() => _unassignedOnly = v),
+              ),
             ),
           ),
           Expanded(
@@ -1929,7 +1953,8 @@ class _AvailabilityTabState extends State<_AvailabilityTab> {
   bool _loading = true;
   bool _saving = false;
 
-  int get _lecturerId => AuthController.to.user.value!.id;
+  // The Lecturer profile id (NOT the user id). Resolved from /lecturers/me.
+  int? _lecturerId;
 
   @override
   void initState() {
@@ -1943,29 +1968,39 @@ class _AvailabilityTabState extends State<_AvailabilityTab> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
+      _lecturerId = (await _api.getMyLecturerProfile())['id'] as int;
       final semesters = await _academicApi.getSemesters();
       if (semesters.isNotEmpty) {
         final slots = await _academicApi.getTimeSlots(semesters.first.id);
         _slots = slots;
       }
-      _unavailable = await _api.getLecturerAvailability(_lecturerId);
+      _unavailable = await _api.getLecturerAvailability(_lecturerId!);
       _unavailableSlotIds
         ..clear()
         ..addAll(_unavailable.map((e) => e['time_slot_id'] as int));
+    } on DioException catch (e) {
+      final detail = (e.response?.data as Map?)?['detail'] as String? ??
+          'Could not load your availability.';
+      Get.snackbar('Error', detail, snackPosition: SnackPosition.BOTTOM);
     } catch (_) {
-      // keep empty state on error
+      // keep empty state on other errors
     }
     setState(() => _loading = false);
   }
 
   Future<void> _save() async {
+    if (_lecturerId == null) {
+      Get.snackbar('Error', 'Your lecturer profile is not available yet.',
+          snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
     setState(() => _saving = true);
     try {
       for (final entry in _unavailable) {
         await _api.deleteAvailability(entry['id'] as int);
       }
       for (final slotId in _unavailableSlotIds) {
-        await _api.addAvailability(_lecturerId, slotId);
+        await _api.addAvailability(_lecturerId!, slotId);
       }
       Get.snackbar('Saved', 'Availability updated.',
           backgroundColor: Colors.green.shade50);

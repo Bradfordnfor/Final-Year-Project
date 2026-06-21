@@ -73,13 +73,71 @@ class _AnalyticsBody extends StatelessWidget {
   final Map<String, dynamic> data;
   const _AnalyticsBody({required this.data});
 
+  void _showLecturerDialog(BuildContext context, Map<String, dynamic> lect) {
+    final cs = Theme.of(context).colorScheme;
+    final courses =
+        (lect['courses'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final totalPeriods = (lect['total_periods'] as num?)?.toInt() ?? 0;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(lect['name'] as String? ?? 'Lecturer'),
+        content: SizedBox(
+          width: 380,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$totalPeriods period(s) per week · ${courses.length} course(s)',
+                style: TextStyle(color: cs.outline, fontSize: 13),
+              ),
+              const Divider(height: 20),
+              if (courses.isEmpty)
+                Text('No courses assigned.',
+                    style: TextStyle(color: cs.outline))
+              else
+                ...courses.map((c) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${c['code']} — ${c['name']}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${c['periods']} period(s)',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: cs.primary),
+                          ),
+                        ],
+                      ),
+                    )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final total = data['total_entries'] as int? ?? 0;
     final overcapacity = data['overcapacity_count'] as int? ?? 0;
-    final rawCounts = data['lecturer_session_counts'] as Map? ?? {};
-    final lecturerCounts = rawCounts
-        .map((k, v) => MapEntry(k.toString(), (v as num).toInt()));
+    final lecturers =
+        (data['lecturers'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -98,13 +156,22 @@ class _AnalyticsBody extends StatelessWidget {
           ).animate().fadeIn(duration: 250.ms),
 
           // Bar chart
-          if (lecturerCounts.isNotEmpty) ...[
+          if (lecturers.isNotEmpty) ...[
             const SizedBox(height: 24),
-            Text('Sessions per Lecturer',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w600)),
+            Row(
+              children: [
+                Text('Sessions per Lecturer',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(width: 8),
+                Text('(tap a bar for details)',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.outline)),
+              ],
+            ),
             const SizedBox(height: 12),
             SizedBox(
               height: 220,
@@ -112,15 +179,33 @@ class _AnalyticsBody extends StatelessWidget {
                 BarChartData(
                   gridData: const FlGridData(show: true),
                   borderData: FlBorderData(show: false),
-                  barGroups: lecturerCounts.entries
-                      .toList()
+                  barTouchData: BarTouchData(
+                    enabled: true,
+                    touchCallback: (event, response) {
+                      if (event is FlTapUpEvent && response?.spot != null) {
+                        final idx = response!.spot!.touchedBarGroupIndex;
+                        if (idx >= 0 && idx < lecturers.length) {
+                          _showLecturerDialog(context, lecturers[idx]);
+                        }
+                      }
+                    },
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipItem: (group, _, rod, __) => BarTooltipItem(
+                        '${lecturers[group.x.toInt()]['name']}\n'
+                        '${rod.toY.toInt()} period(s)',
+                        const TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                    ),
+                  ),
+                  barGroups: lecturers
                       .asMap()
                       .entries
                       .map((e) => BarChartGroupData(
                             x: e.key,
                             barRods: [
                               BarChartRodData(
-                                toY: e.value.value.toDouble(),
+                                toY: ((e.value['total_periods'] as num?) ?? 0)
+                                    .toDouble(),
                                 color: Theme.of(context).colorScheme.primary,
                                 width: 18,
                                 borderRadius: const BorderRadius.vertical(
@@ -143,8 +228,7 @@ class _AnalyticsBody extends StatelessWidget {
                         reservedSize: 28,
                         getTitlesWidget: (val, _) {
                           final idx = val.toInt();
-                          final keys = lecturerCounts.keys.toList();
-                          if (idx < 0 || idx >= keys.length) {
+                          if (idx < 0 || idx >= lecturers.length) {
                             return const SizedBox.shrink();
                           }
                           return Text('L${idx + 1}',

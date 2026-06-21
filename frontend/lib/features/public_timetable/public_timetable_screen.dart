@@ -28,7 +28,7 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
   Map<int, String> _roomNames = {};
   bool _loading = true;
   bool _loadingEntries = false;
-  int? _filteredClassId;
+  List<int>? _filteredClassIds;
 
   // Unauthenticated client (no token)
   final _client = ApiClient();
@@ -157,13 +157,17 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
                             children: [
                               ClassFilterBar(
                                 client: _client,
-                                onClassSelected: (id) => setState(() => _filteredClassId = id),
+                                onScopeSelected: (ids) =>
+                                  setState(() => _filteredClassIds = ids),
                               ),
                               Expanded(
                                 child: _TimetableView(
                                   run: _selectedRun,
-                                  entries: _filteredClassId != null
-                                      ? _entries.where((e) => e.classIds.contains(_filteredClassId)).toList()
+                                  entries: _filteredClassIds != null
+                                      ? _entries
+                                          .where((e) => e.classIds.any((c) =>
+                                              _filteredClassIds!.contains(c)))
+                                          .toList()
                                       : _entries,
                                   timeSlots: _timeSlots,
                                   loading: _loadingEntries,
@@ -194,13 +198,17 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
                             ),
                             ClassFilterBar(
                               client: _client,
-                              onClassSelected: (id) => setState(() => _filteredClassId = id),
+                              onScopeSelected: (ids) =>
+                                  setState(() => _filteredClassIds = ids),
                             ),
                             Expanded(
                               child: _TimetableView(
                                 run: _selectedRun,
-                                entries: _filteredClassId != null
-                                    ? _entries.where((e) => e.classIds.contains(_filteredClassId)).toList()
+                                entries: _filteredClassIds != null
+                                    ? _entries
+                                        .where((e) => e.classIds.any((c) =>
+                                            _filteredClassIds!.contains(c)))
+                                        .toList()
                                     : _entries,
                                 timeSlots: _timeSlots,
                                 loading: _loadingEntries,
@@ -426,7 +434,9 @@ class _PublicSlotCell extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             Text(
-              roomNames[entry!.roomId] ?? 'Room #${entry!.roomId}',
+              entry!.roomId == null
+                  ? 'Outdoor / off-site'
+                  : (roomNames[entry!.roomId] ?? 'Room #${entry!.roomId}'),
               style: TextStyle(fontSize: 11, color: cs.outline),
             ),
           ],

@@ -94,7 +94,15 @@ class TimetableController extends GetxController {
   Future<void> generate(int runId) async {
     isGenerating.value = true;
     jobStatus.value = 'pending';
-    await _api.triggerGeneration(runId);
+    try {
+      await _api.triggerGeneration(runId);
+    } catch (e) {
+      // Generation was refused before it started (e.g. run not ready, 400).
+      // Reset state and let the caller surface the reason to the user.
+      isGenerating.value = false;
+      jobStatus.value = '';
+      rethrow;
+    }
     _startPolling(runId);
   }
 
@@ -108,6 +116,12 @@ class TimetableController extends GetxController {
         isGenerating.value = false;
         if (jobStatus.value == 'completed') {
           await selectRun(runId);
+        } else {
+          final msg = status['error_message'] as String? ??
+              'Generation failed. Please review the run and try again.';
+          Get.snackbar('Generation failed', msg,
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 6));
         }
       }
     });
@@ -133,9 +147,12 @@ class TimetableController extends GetxController {
 
   Future<void> resolveConflict(
       int runId, int conflictId, String resolution) async {
-    final updated = await _api.resolveConflict(runId, conflictId, resolution);
-    final idx = conflicts.indexWhere((c) => c.id == conflictId);
-    if (idx != -1) conflicts[idx] = updated;
+    await _api.resolveConflict(runId, conflictId, resolution);
+    // The conflict is now resolved — drop it from the list so it disappears
+    // from the UI instead of lingering with its action buttons.
+    conflicts.removeWhere((c) => c.id == conflictId);
+    // add_session creates new entries; refresh so the grid reflects them.
+    await loadEntries(runId);
   }
 
   void _replaceRun(TimetableRun updated) {

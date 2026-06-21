@@ -67,6 +67,11 @@ class TimetableApi {
     return response.data as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> getReadiness(int runId) async {
+    final response = await _client.get('/runs/$runId/readiness');
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<TimetableRun> advanceStatus(int runId) async {
     final response = await _client.post('/runs/$runId/advance-status');
     return TimetableRun.fromJson(response.data as Map<String, dynamic>);
@@ -102,8 +107,12 @@ class TimetableApi {
     await _client.post('/notifications/$notificationId/read');
   }
 
-  Future<List<int>> downloadExport(int runId, String format) async {
-    final response = await _client.downloadFile('/export/runs/$runId/$format');
+  Future<List<int>> downloadExport(int runId, String format,
+      {List<int>? classIds}) async {
+    final path = (classIds != null && classIds.isNotEmpty)
+        ? '/export/runs/$runId/$format?class_ids=${classIds.join(',')}'
+        : '/export/runs/$runId/$format';
+    final response = await _client.downloadFile(path);
     return List<int>.from(response.data as List);
   }
 

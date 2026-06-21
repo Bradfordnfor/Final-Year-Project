@@ -37,7 +37,7 @@ class TimetableEntry {
   final int runId;
   final int courseId;
   final int lecturerId;
-  final int roomId;
+  final int? roomId; // null for outdoor / off-site sessions
   final int timeSlotId;
   final int? groupId;
   final String weekPattern;
@@ -48,7 +48,7 @@ class TimetableEntry {
 
   const TimetableEntry({
     required this.id, required this.runId, required this.courseId,
-    required this.lecturerId, required this.roomId, required this.timeSlotId,
+    required this.lecturerId, this.roomId, required this.timeSlotId,
     this.groupId, required this.weekPattern, this.rotationSequence,
     required this.isOvercapacity, required this.isMerged, required this.classIds,
   });
@@ -58,7 +58,7 @@ class TimetableEntry {
         runId: json['run_id'] as int,
         courseId: json['course_id'] as int,
         lecturerId: json['lecturer_id'] as int,
-        roomId: json['room_id'] as int,
+        roomId: json['room_id'] as int?,
         timeSlotId: json['time_slot_id'] as int,
         groupId: json['group_id'] as int?,
         weekPattern: json['week_pattern'] as String,

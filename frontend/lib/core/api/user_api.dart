@@ -24,6 +24,14 @@ class UserApi {
     return (response.data as List).cast<Map<String, dynamic>>();
   }
 
+  /// The current lecturer's own profile (provisions one on first use).
+  /// Returns the Lecturer record including its `id` — the value to use as
+  /// `lecturer_id` when reading or writing availability.
+  Future<Map<String, dynamic>> getMyLecturerProfile() async {
+    final response = await _client.get('/lecturers/me');
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<List<Map<String, dynamic>>> getLecturerAvailability(int lecturerId) async {
     final response = await _client.get('/lecturers/$lecturerId/availability');
     return List<Map<String, dynamic>>.from(response.data as List);

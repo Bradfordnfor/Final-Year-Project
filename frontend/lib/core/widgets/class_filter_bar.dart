@@ -9,16 +9,18 @@ class ClassFilterBar extends StatefulWidget {
   /// If null, all faculties are loaded from the API.
   final List<Faculty>? faculties;
 
-  /// Called with the selected class_id when the user taps View,
-  /// or null when Clear is tapped.
-  final void Function(int? classId) onClassSelected;
+  /// Called with the class IDs in the chosen scope when the user taps View:
+  /// a single class (faculty+dept+level), every class in a department
+  /// (faculty+dept), or every class in a faculty (faculty only). Called with
+  /// null when Clear is tapped (show everything).
+  final void Function(List<int>? classIds) onScopeSelected;
 
   /// Unauthenticated client for public view; authenticated for internal.
   final ApiClient client;
 
   const ClassFilterBar({
     super.key,
-    required this.onClassSelected,
+    required this.onScopeSelected,
     required this.client,
     this.faculties,
   });
@@ -30,7 +32,8 @@ class ClassFilterBar extends StatefulWidget {
 class _ClassFilterBarState extends State<ClassFilterBar> {
   List<Faculty> _faculties = [];
   List<Department> _departments = [];
-  List<Map<String, dynamic>> _levels = [];
+  // dept id -> its levels ({id, number, class_id}); cached when a faculty loads.
+  Map<int, List<Map<String, dynamic>>> _deptLevels = {};
 
   Faculty? _selectedFaculty;
   Department? _selectedDept;
@@ -38,7 +41,9 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
 
   bool _loadingFaculties = false;
   bool _loadingDepts = false;
-  bool _loadingLevels = false;
+
+  List<Map<String, dynamic>> get _levels =>
+      _selectedDept == null ? [] : (_deptLevels[_selectedDept!.id] ?? []);
 
   @override
   void initState() {
@@ -54,7 +59,12 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
     setState(() => _loadingFaculties = true);
     try {
       final faculties = await UniversityApi(widget.client).getFaculties();
-      if (mounted) setState(() { _faculties = faculties; _loadingFaculties = false; });
+      if (mounted) {
+        setState(() {
+          _faculties = faculties;
+          _loadingFaculties = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _loadingFaculties = false);
     }
@@ -66,15 +76,29 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
       _selectedDept = null;
       _selectedLevel = null;
       _departments = [];
-      _levels = [];
+      _deptLevels = {};
     });
     if (f == null) return;
     setState(() => _loadingDepts = true);
     try {
       final all = await UniversityApi(widget.client).getDepartments();
+      final depts = all.where((d) => d.facultyId == f.id).toList();
+      // Pre-fetch every department's levels so a faculty-wide or
+      // department-wide scope can be built without further requests.
+      final deptLevels = <int, List<Map<String, dynamic>>>{};
+      await Future.wait(depts.map((d) async {
+        try {
+          final resp = await widget.client
+              .get('/faculty-setup/public-levels?department_id=${d.id}');
+          deptLevels[d.id] = (resp.data as List).cast<Map<String, dynamic>>();
+        } catch (_) {
+          deptLevels[d.id] = [];
+        }
+      }));
       if (mounted) {
         setState(() {
-          _departments = all.where((d) => d.facultyId == f.id).toList();
+          _departments = depts;
+          _deptLevels = deptLevels;
           _loadingDepts = false;
         });
       }
@@ -83,22 +107,33 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
     }
   }
 
-  Future<void> _onDeptSelected(Department? d) async {
+  void _onDeptSelected(Department? d) {
     setState(() {
       _selectedDept = d;
       _selectedLevel = null;
-      _levels = [];
     });
-    if (d == null) return;
-    setState(() => _loadingLevels = true);
-    try {
-      final resp = await widget.client
-          .get('/faculty-setup/public-levels?department_id=${d.id}');
-      final levels = (resp.data as List).cast<Map<String, dynamic>>();
-      if (mounted) setState(() { _levels = levels; _loadingLevels = false; });
-    } catch (_) {
-      if (mounted) setState(() => _loadingLevels = false);
+  }
+
+  /// The class IDs covered by the current selection.
+  List<int> _scope() {
+    if (_selectedLevel != null) {
+      final cid = _selectedLevel!['class_id'] as int?;
+      return cid != null ? [cid] : [];
     }
+    if (_selectedDept != null) {
+      return (_deptLevels[_selectedDept!.id] ?? [])
+          .map((l) => l['class_id'] as int?)
+          .whereType<int>()
+          .toList();
+    }
+    if (_selectedFaculty != null) {
+      return _deptLevels.values
+          .expand((ls) => ls)
+          .map((l) => l['class_id'] as int?)
+          .whereType<int>()
+          .toList();
+    }
+    return [];
   }
 
   void _clear() {
@@ -107,9 +142,9 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
       _selectedDept = null;
       _selectedLevel = null;
       _departments = [];
-      _levels = [];
+      _deptLevels = {};
     });
-    widget.onClassSelected(null);
+    widget.onScopeSelected(null);
   }
 
   @override
@@ -138,15 +173,15 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
                     items: _faculties
                         .map((f) => DropdownMenuItem(
                               value: f,
-                              child: Text(f.code,
-                                  overflow: TextOverflow.ellipsis),
+                              child:
+                                  Text(f.code, overflow: TextOverflow.ellipsis),
                             ))
                         .toList(),
                     onChanged: _onFacultySelected,
                   ),
           ),
           const SizedBox(width: 8),
-          // Department
+          // Department (optional — leave blank for the whole faculty)
           Expanded(
             child: _loadingDepts
                 ? const LinearProgressIndicator()
@@ -154,7 +189,7 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
                     value: _selectedDept,
                     isExpanded: true,
                     decoration: const InputDecoration(
-                      labelText: 'Department',
+                      labelText: 'Dept (all)',
                       isDense: true,
                       border: OutlineInputBorder(),
                       contentPadding:
@@ -163,47 +198,46 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
                     items: _departments
                         .map((d) => DropdownMenuItem(
                               value: d,
-                              child: Text(d.code,
-                                  overflow: TextOverflow.ellipsis),
+                              child:
+                                  Text(d.code, overflow: TextOverflow.ellipsis),
                             ))
                         .toList(),
-                    onChanged: _onDeptSelected,
+                    onChanged:
+                        _selectedFaculty == null ? null : _onDeptSelected,
                   ),
           ),
           const SizedBox(width: 8),
-          // Level
+          // Level (optional — leave blank for the whole department)
           Expanded(
-            child: _loadingLevels
-                ? const LinearProgressIndicator()
-                : DropdownButtonFormField<Map<String, dynamic>>(
-                    value: _selectedLevel,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Level',
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    ),
-                    items: _levels
-                        .map((l) => DropdownMenuItem(
-                              value: l,
-                              child: Text('Level ${l['number']}'),
-                            ))
-                        .toList(),
-                    onChanged: (l) => setState(() => _selectedLevel = l),
-                  ),
+            child: DropdownButtonFormField<Map<String, dynamic>>(
+              value: _selectedLevel,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Level (all)',
+                isDense: true,
+                border: OutlineInputBorder(),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              ),
+              items: _levels
+                  .map((l) => DropdownMenuItem(
+                        value: l,
+                        child: Text('Level ${l['number']}'),
+                      ))
+                  .toList(),
+              onChanged: _selectedDept == null
+                  ? null
+                  : (l) => setState(() => _selectedLevel = l),
+            ),
           ),
           const SizedBox(width: 8),
-          // View button
+          // View button — enabled once at least a faculty is chosen
           FilledButton(
-            onPressed: _selectedLevel != null
-                ? () => widget
-                    .onClassSelected(_selectedLevel!['class_id'] as int?)
+            onPressed: _selectedFaculty != null
+                ? () => widget.onScopeSelected(_scope())
                 : null,
             style: FilledButton.styleFrom(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               minimumSize: Size.zero,
             ),
             child: const Text('View'),
@@ -213,8 +247,7 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
           TextButton(
             onPressed: _clear,
             style: TextButton.styleFrom(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
               minimumSize: Size.zero,
             ),
             child: const Text('Clear'),

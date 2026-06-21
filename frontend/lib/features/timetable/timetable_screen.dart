@@ -40,7 +40,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
   List<Room> _allRooms = [];
   Map<int, String> _lecturerNames = {};
   bool _loadingMeta = true;
-  int? _filteredClassId;
+  List<int>? _filteredClassIds;
   List<Faculty>? _runFaculties;
 
   @override
@@ -133,11 +133,13 @@ class _TimetableScreenState extends State<TimetableScreen> {
       (s) => s.id == entry.timeSlotId,
       orElse: () => TimeSlot(id: 0, dayOfWeek: '', startTime: '', endTime: '', semesterId: 0),
     );
-    final currentRoom = _roomNames[entry.roomId] ?? 'Room #${entry.roomId}';
-    final currentCapacity = _roomCapacities[entry.roomId];
-    final currentRoomLabel = currentCapacity != null
-        ? '$currentRoom ($currentCapacity seats)'
-        : currentRoom;
+    final currentRoomLabel = entry.roomId == null
+        ? 'Outdoor / off-site'
+        : () {
+            final room = _roomNames[entry.roomId] ?? 'Room #${entry.roomId}';
+            final cap = _roomCapacities[entry.roomId];
+            return cap != null ? '$room ($cap seats)' : room;
+          }();
 
     final classNamesList = entry.classIds.map((id) {
       return _classNames[id] ?? 'Class #$id';
@@ -514,7 +516,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                     await _loadTimeSlots(r.semesterId);
                                     if (mounted) {
                                       setState(() {
-                                        _filteredClassId = null;
+                                        _filteredClassIds = null;
                                         _runFaculties = _faculties
                                             .where((f) => r.facultyIds.contains(f.id))
                                             .toList();
@@ -546,12 +548,25 @@ class _TimetableScreenState extends State<TimetableScreen> {
                             ClassFilterBar(
                               client: ApiClient(token: AuthController.to.token),
                               faculties: _runFaculties,
-                              onClassSelected: (id) => setState(() => _filteredClassId = id),
+                              onScopeSelected: (ids) =>
+                                  setState(() => _filteredClassIds = ids),
+                            ),
+                            _FreeRoomsPanel(
+                              rooms: _allRooms
+                                  .where((r) =>
+                                      r.isActive &&
+                                      selected.buildingIds.contains(r.buildingId))
+                                  .toList(),
+                              entries: ctrl.entries,
+                              timeSlots: _timeSlots,
                             ),
                             Expanded(
                               child: _TimetableGrid(
-                                entries: _filteredClassId != null
-                                    ? ctrl.entries.where((e) => e.classIds.contains(_filteredClassId)).toList()
+                                entries: _filteredClassIds != null
+                                    ? ctrl.entries
+                                        .where((e) => e.classIds.any(
+                                            (c) => _filteredClassIds!.contains(c)))
+                                        .toList()
                                     : ctrl.entries,
                                 timeSlots: _timeSlots,
                                 run: selected,
@@ -563,6 +578,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                 currentUserId: currentUserId,
                                 courseNames: _courseNames,
                                 roomNames: _roomNames,
+                                filteredClassIds: _filteredClassIds,
                                 onEntryTap: (canManage || isFacultyHead)
                                     ? (entry) => _showMoveDialog(entry, selected)
                                     : null,
@@ -649,14 +665,17 @@ class _RunCard extends StatelessWidget {
 
 // ── Timetable Grid ────────────────────────────────────────────────────────────
 
-Future<void> _downloadTimetable(int runId, String format) async {
+Future<void> _downloadTimetable(int runId, String format,
+    {List<int>? classIds}) async {
   try {
     final api = TimetableApi(ApiClient(token: AuthController.to.token));
-    final bytes = await api.downloadExport(runId, format);
+    final bytes = await api.downloadExport(runId, format, classIds: classIds);
     final blob = html.Blob([Uint8List.fromList(bytes)]);
     final url = html.Url.createObjectUrlFromBlob(blob);
+    final suffix =
+        (classIds != null && classIds.isNotEmpty) ? '_filtered' : '';
     html.AnchorElement(href: url)
-      ..setAttribute('download', 'timetable_$runId.$format')
+      ..setAttribute('download', 'timetable_$runId$suffix.$format')
       ..click();
     html.Url.revokeObjectUrl(url);
   } catch (e) {
@@ -676,6 +695,7 @@ class _TimetableGrid extends StatelessWidget {
   final int? currentUserId;
   final Map<int, String> courseNames;
   final Map<int, String> roomNames;
+  final List<int>? filteredClassIds;
   final void Function(TimetableEntry)? onEntryTap;
 
   const _TimetableGrid({
@@ -683,7 +703,7 @@ class _TimetableGrid extends StatelessWidget {
     required this.run, required this.canManage,
     this.canAdvance = false, this.canPublish = false,
     this.isTimetableOfficer = false, this.isFacultyHead = false,
-    this.currentUserId,
+    this.currentUserId, this.filteredClassIds,
     this.courseNames = const {}, this.roomNames = const {},
     this.onEntryTap,
   });
@@ -727,11 +747,29 @@ class _TimetableGrid extends StatelessWidget {
               _StatusBadge(run.status),
               // Generate Draft: draft with no generated output yet, officer only
               if (run.isDraft && run.generatedAt == null && isTimetableOfficer)
-                FilledButton.icon(
-                  onPressed: () => TimetableController.to.generate(run.id),
-                  icon: const Icon(Icons.auto_fix_high_outlined, size: 16),
-                  label: const Text('Generate Draft'),
-                ),
+                Obx(() {
+                  if (TimetableController.to.isGenerating.value) {
+                    return const _GeneratingChip();
+                  }
+                  return FilledButton.icon(
+                    onPressed: () => _startGeneration(context, run),
+                    icon: const Icon(Icons.auto_fix_high_outlined, size: 16),
+                    label: const Text('Generate Draft'),
+                  );
+                }),
+              // Regenerate: draft already generated — re-run replaces the old
+              // result (clears it first) instead of stacking another on top.
+              if (run.isDraft && run.generatedAt != null && isTimetableOfficer)
+                Obx(() {
+                  if (TimetableController.to.isGenerating.value) {
+                    return const _GeneratingChip();
+                  }
+                  return OutlinedButton.icon(
+                    onPressed: () => _startGeneration(context, run),
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Regenerate'),
+                  );
+                }),
               // Submit for Review: draft already generated, officer only
               if (run.isDraft && run.generatedAt != null && isTimetableOfficer)
                 OutlinedButton.icon(
@@ -751,14 +789,18 @@ class _TimetableGrid extends StatelessWidget {
                 ),
               if (entries.isNotEmpty) ...[
                 OutlinedButton.icon(
-                  onPressed: () => _downloadTimetable(run.id, 'csv'),
+                  onPressed: () => _downloadTimetable(run.id, 'csv',
+                      classIds: filteredClassIds),
                   icon: const Icon(Icons.table_chart_outlined, size: 16),
-                  label: const Text('CSV'),
+                  label:
+                      Text(filteredClassIds != null ? 'CSV (filtered)' : 'CSV'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () => _downloadTimetable(run.id, 'pdf'),
+                  onPressed: () => _downloadTimetable(run.id, 'pdf',
+                      classIds: filteredClassIds),
                   icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
-                  label: const Text('PDF'),
+                  label:
+                      Text(filteredClassIds != null ? 'PDF (filtered)' : 'PDF'),
                 ),
               ],
             ],
@@ -887,7 +929,9 @@ class _SlotCell extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             Text(
-              roomNames[entry!.roomId] ?? 'Room #${entry!.roomId}',
+              entry!.roomId == null
+                  ? 'Outdoor / off-site'
+                  : (roomNames[entry!.roomId] ?? 'Room #${entry!.roomId}'),
               style: TextStyle(fontSize: 11, color: cs.outline),
             ),
             if (entry!.isOvercapacity)
@@ -1184,4 +1228,287 @@ class _ApprovalStatusPanelState extends State<_ApprovalStatusPanel> {
       ),
     );
   }
+}
+
+/// Inline progress indicator shown in place of the Generate/Regenerate button
+/// while a generation job is running, so the user sees it is working.
+class _GeneratingChip extends StatelessWidget {
+  const _GeneratingChip();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final status = TimetableController.to.jobStatus.value;
+    final msg = status == 'pending'
+        ? 'Starting generation…'
+        : 'Generating timetable…';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withAlpha(120),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '$msg this can take up to a minute',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: cs.onPrimaryContainer),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Collapsible panel showing, for a chosen period (day + time slot), which
+/// rooms in the run have no session then — so the officer can see exactly what
+/// is free at a specific period rather than only rooms idle the whole day.
+class _FreeRoomsPanel extends StatefulWidget {
+  final List<Room> rooms; // active rooms in the run's buildings
+  final List<TimetableEntry> entries; // full run entries (unfiltered)
+  final List<TimeSlot> timeSlots;
+  const _FreeRoomsPanel({
+    required this.rooms,
+    required this.entries,
+    required this.timeSlots,
+  });
+
+  @override
+  State<_FreeRoomsPanel> createState() => _FreeRoomsPanelState();
+}
+
+class _FreeRoomsPanelState extends State<_FreeRoomsPanel> {
+  static const _dayOrder = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'
+  ];
+  int? _slotId;
+
+  List<TimeSlot> get _sortedSlots {
+    final slots = [...widget.timeSlots];
+    slots.sort((a, b) {
+      final da = _dayOrder.indexOf(a.dayOfWeek);
+      final db = _dayOrder.indexOf(b.dayOfWeek);
+      if (da != db) return da.compareTo(db);
+      return a.startTime.compareTo(b.startTime);
+    });
+    return slots;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (widget.rooms.isEmpty || widget.timeSlots.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final slots = _sortedSlots;
+    final selectedId = _slotId ?? slots.first.id;
+
+    final usedRoomIds = <int>{};
+    for (final e in widget.entries) {
+      if (e.roomId != null && e.timeSlotId == selectedId) {
+        usedRoomIds.add(e.roomId!);
+      }
+    }
+    final free =
+        widget.rooms.where((r) => !usedRoomIds.contains(r.id)).toList();
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: ExpansionTile(
+        leading: const Icon(Icons.meeting_room_outlined),
+        title: const Text('Free rooms by period'),
+        subtitle: const Text('Rooms with no session in the selected period'),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        children: [
+          DropdownButtonFormField<int>(
+            value: selectedId,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Period',
+              isDense: true,
+              border: OutlineInputBorder(),
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            ),
+            items: slots
+                .map((s) => DropdownMenuItem(
+                      value: s.id,
+                      child: Text('${s.dayOfWeek} ${s.label}',
+                          overflow: TextOverflow.ellipsis),
+                    ))
+                .toList(),
+            onChanged: (v) => setState(() => _slotId = v),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '${free.length} of ${widget.rooms.length} rooms free',
+              style: TextStyle(
+                  fontWeight: FontWeight.w600, fontSize: 13, color: cs.primary),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (free.isEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('All rooms are in use this period.',
+                  style: TextStyle(fontSize: 12, color: cs.outline)),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: free
+                    .map((r) => Chip(
+                          label: Text(r.name,
+                              style: const TextStyle(fontSize: 11)),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ))
+                    .toList(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Generation entry point for the officer's "Generate Draft" button.
+/// Runs a pre-flight readiness check first: if the run is not ready it shows a
+/// dialog listing exactly what is missing, and only attempts generation when
+/// every check passes. Any error from the generate call itself is surfaced too,
+/// so generation can never fail silently.
+Future<void> _startGeneration(BuildContext context, TimetableRun run) async {
+  final api = TimetableApi(ApiClient(token: AuthController.to.token));
+
+  Map<String, dynamic> readiness;
+  try {
+    readiness = await api.getReadiness(run.id);
+  } catch (e) {
+    if (context.mounted) {
+      Get.snackbar('Error', 'Could not check readiness: $e',
+          snackPosition: SnackPosition.BOTTOM);
+    }
+    return;
+  }
+
+  final ready = readiness['ready'] == true;
+  final checks =
+      (readiness['checks'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+  if (!ready) {
+    if (context.mounted) await _showReadinessDialog(context, checks);
+    return;
+  }
+
+  try {
+    await TimetableController.to.generate(run.id);
+  } on DioException catch (e) {
+    final detail = (e.response?.data as Map?)?['detail'] as String? ??
+        e.message ??
+        'Generation could not be started.';
+    if (context.mounted) {
+      Get.snackbar('Cannot generate', detail,
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 6));
+    }
+  } catch (e) {
+    if (context.mounted) {
+      Get.snackbar('Error', e.toString(), snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+}
+
+Future<void> _showReadinessDialog(
+    BuildContext context, List<Map<String, dynamic>> checks) {
+  final cs = Theme.of(context).colorScheme;
+  return showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: cs.error),
+          const SizedBox(width: 8),
+          const Expanded(child: Text('Not ready to generate')),
+        ],
+      ),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Fix the items marked below before generating this timetable.',
+              style: TextStyle(fontSize: 13, color: cs.outline),
+            ),
+            const SizedBox(height: 12),
+            ...checks.map((c) {
+              final ok = c['ok'] == true;
+              final detail = (c['detail'] as String?) ?? '';
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      ok ? Icons.check_circle_outline : Icons.cancel_outlined,
+                      size: 18,
+                      color: ok ? Colors.green : cs.error,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            c['label'] as String? ?? '',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight:
+                                  ok ? FontWeight.w400 : FontWeight.w600,
+                            ),
+                          ),
+                          if (!ok && detail.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                detail,
+                                style: TextStyle(fontSize: 12, color: cs.error),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Got it'),
+        ),
+      ],
+    ),
+  );
 }

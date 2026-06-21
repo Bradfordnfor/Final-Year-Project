@@ -54,13 +54,13 @@ class AppShell extends StatelessWidget {
     _Dest(
       icon: Icons.bar_chart_outlined, activeIcon: Icons.bar_chart,
       label: 'Analytics', route: AppRoutes.analytics,
-      visible: (u) => u.canManageTimetable || u.canManageUniversity,
+      // University admin sees the whole university; a faculty head sees their
+      // own faculty. The timetable officer does not get analytics.
+      visible: (u) => u.canManageUniversity || u.isFacultyHead,
     ),
-    _Dest(
-      icon: Icons.notifications_outlined, activeIcon: Icons.notifications,
-      label: 'Notifications', route: AppRoutes.notifications,
-      visible: (u) => !u.isSuperAdmin,
-    ),
+    // Notifications is intentionally NOT a nav destination: it is reached via
+    // the badged _NotificationTile in the sidebar and the _NotificationBadgeIcon
+    // in the rail/mobile app bar. Listing it here too produced a duplicate tab.
     _Dest(
       icon: Icons.upload_file_outlined, activeIcon: Icons.upload_file,
       label: 'Bulk Import', route: AppRoutes.bulkImport,
