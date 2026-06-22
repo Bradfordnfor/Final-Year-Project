@@ -51,6 +51,24 @@ def test_csv_export_multi_class_scope(client, auth_headers, db, admin_user):
     assert len(_data_rows(one.text)) == 2  # header + 1 session
 
 
+def test_public_export_only_for_published_runs(client, auth_headers, db, admin_user):
+    run = _run_with_two_classes(db, admin_user.id)  # status draft by default
+
+    # A draft is not publicly exportable.
+    assert client.get(f"/export/public/runs/{run.id}/csv").status_code == 404
+
+    # Once published, the public export works without any auth header.
+    run.status = "published"
+    db.commit()
+    full = client.get(f"/export/public/runs/{run.id}/csv")
+    assert full.status_code == 200
+    assert len(_data_rows(full.text)) == 3  # header + both sessions
+
+    one = client.get(f"/export/public/runs/{run.id}/csv?class_ids=101")
+    assert one.status_code == 200
+    assert len(_data_rows(one.text)) == 2  # header + 1 session
+
+
 def test_csv_export_filter_no_match_is_404(client, auth_headers, db, admin_user):
     run = _run_with_two_classes(db, admin_user.id)
     resp = client.get(

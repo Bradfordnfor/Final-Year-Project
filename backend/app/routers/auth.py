@@ -77,3 +77,32 @@ def change_password(
     current_user.hashed_password = get_password_hash(payload.new_password)
     db.commit()
     return {"ok": True}
+
+
+class ChangeEmailRequest(BaseModel):
+    email: str
+
+
+@router.post("/change-email", response_model=UserOut)
+def change_email(
+    payload: ChangeEmailRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    new_email = payload.email.strip()
+    if "@" not in new_email or "." not in new_email or " " in new_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Enter a valid email address",
+        )
+    clash = db.query(User).filter(
+        User.email == new_email, User.id != current_user.id).first()
+    if clash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="That email address is already in use",
+        )
+    current_user.email = new_email
+    db.commit()
+    db.refresh(current_user)
+    return UserOut.model_validate(current_user)

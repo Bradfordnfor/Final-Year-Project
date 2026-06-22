@@ -68,54 +68,20 @@ def _get_entries_with_details(run_id: int, db: Session,
     return sorted(rows, key=lambda r: (r["Day"], r["Time"]))
 
 
-@router.get("/runs/{run_id}/csv")
-def export_csv(
-    run_id: int,
-    class_id: int | None = None,
-    class_ids: str | None = None,
-    db: Session = Depends(get_db),
-    _: UserModel = Depends(get_current_user),
-):
-    run = db.get(TimetableRun, run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Timetable run not found")
-
-    ids = _resolve_class_filter(class_ids, class_id)
-    rows = _get_entries_with_details(run_id, db, ids)
-    if not rows:
-        raise HTTPException(status_code=404, detail="No entries to export")
-
+def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=rows[0].keys())
     writer.writeheader()
     writer.writerows(rows)
     output.seek(0)
-
-    suffix = "_filtered" if ids else ""
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=timetable_run_{run_id}{suffix}.csv"},
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
-@router.get("/runs/{run_id}/pdf")
-def export_pdf(
-    run_id: int,
-    class_id: int | None = None,
-    class_ids: str | None = None,
-    db: Session = Depends(get_db),
-    _: UserModel = Depends(get_current_user),
-):
-    run = db.get(TimetableRun, run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Timetable run not found")
-
-    ids = _resolve_class_filter(class_ids, class_id)
-    rows = _get_entries_with_details(run_id, db, ids)
-    if not rows:
-        raise HTTPException(status_code=404, detail="No entries to export")
-
+def _pdf_response(rows: list[dict], title: str, filename: str) -> StreamingResponse:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
     styles = getSampleStyleSheet()
@@ -134,15 +100,90 @@ def export_pdf(
         ("BACKGROUND", (7, 1), (7, -1), colors.HexColor("#fff3e0")),
     ]))
 
-    doc.build([
-        Paragraph(f"Timetable Run — {run.name}", styles["Title"]),
-        table,
-    ])
+    doc.build([Paragraph(title, styles["Title"]), table])
     buffer.seek(0)
-
-    suffix = "_filtered" if ids else ""
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=timetable_run_{run_id}{suffix}.pdf"},
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+def _rows_or_404(run_id: int, db: Session, ids: set[int] | None) -> list[dict]:
+    rows = _get_entries_with_details(run_id, db, ids)
+    if not rows:
+        raise HTTPException(status_code=404, detail="No entries to export")
+    return rows
+
+
+@router.get("/runs/{run_id}/csv")
+def export_csv(
+    run_id: int,
+    class_id: int | None = None,
+    class_ids: str | None = None,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    run = db.get(TimetableRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Timetable run not found")
+    ids = _resolve_class_filter(class_ids, class_id)
+    rows = _rows_or_404(run_id, db, ids)
+    suffix = "_filtered" if ids else ""
+    return _csv_response(rows, f"timetable_run_{run_id}{suffix}.csv")
+
+
+@router.get("/runs/{run_id}/pdf")
+def export_pdf(
+    run_id: int,
+    class_id: int | None = None,
+    class_ids: str | None = None,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    run = db.get(TimetableRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Timetable run not found")
+    ids = _resolve_class_filter(class_ids, class_id)
+    rows = _rows_or_404(run_id, db, ids)
+    suffix = "_filtered" if ids else ""
+    return _pdf_response(rows, f"Timetable Run — {run.name}",
+                         f"timetable_run_{run_id}{suffix}.pdf")
+
+
+# ── Public exports (no auth; published runs only — for students) ──────────────
+
+def _published_run_or_404(run_id: int, db: Session) -> TimetableRun:
+    run = db.get(TimetableRun, run_id)
+    if not run or run.status != "published":
+        raise HTTPException(status_code=404, detail="Published timetable not found")
+    return run
+
+
+@router.get("/public/runs/{run_id}/csv")
+def export_public_csv(
+    run_id: int,
+    class_id: int | None = None,
+    class_ids: str | None = None,
+    db: Session = Depends(get_db),
+):
+    _published_run_or_404(run_id, db)
+    ids = _resolve_class_filter(class_ids, class_id)
+    rows = _rows_or_404(run_id, db, ids)
+    suffix = "_filtered" if ids else ""
+    return _csv_response(rows, f"timetable_{run_id}{suffix}.csv")
+
+
+@router.get("/public/runs/{run_id}/pdf")
+def export_public_pdf(
+    run_id: int,
+    class_id: int | None = None,
+    class_ids: str | None = None,
+    db: Session = Depends(get_db),
+):
+    run = _published_run_or_404(run_id, db)
+    ids = _resolve_class_filter(class_ids, class_id)
+    rows = _rows_or_404(run_id, db, ids)
+    suffix = "_filtered" if ids else ""
+    return _pdf_response(rows, f"Timetable — {run.name}",
+                         f"timetable_{run_id}{suffix}.pdf")
