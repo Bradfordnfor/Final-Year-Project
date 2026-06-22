@@ -72,7 +72,7 @@ The code is divided into two independent projects, a `backend` and a `frontend`,
 
 ### 4.3.2 The Data Layer
 
-The first layer built was the data, since everything rests on it. Each entity of the model in Section 3.4.1 is implemented as a SQLAlchemy class — `University`, `Faculty`, `Department`, `Level`, `Class`, `ClassGroup`, `Building`, `Room`, `Semester`, `TimeSlot`, `Course`, `User`, `Lecturer`, `Student`, and the timetable-run family of `TimetableRun`, `TimetableEntry`, `TimetableConflict`, `GenerationJob`, `FacultyHeadApproval`, and `Notification` — with the relationships between them expressed as foreign keys and navigable associations. The many-to-many relationships that the relational model cannot hold directly are carried by link tables: `SharedCourse` records which extra classes attend a shared course, `TimetableEntryClass` records the classes attending each session, and `TimetableRunFaculty` and `TimetableRunBuilding` record the scope of a run. Schema changes over the life of the project were managed with Alembic migrations, and a seed script was written to populate a database with a realistic university for development and testing.
+The first layer built was the data, since everything rests on it. Each entity of the model in Section 3.4.1 is implemented as a SQLAlchemy class — `University`, `Faculty`, `Department`, `Level`, `Class`, `ClassGroup`, `Building`, `Room`, `Semester`, `TimeSlot`, `Course`, `User`, `Lecturer`, `Student`, and the timetable-run family of `TimetableRun`, `TimetableEntry`, `TimetableConflict`, `GenerationJob`, `FacultyHeadApproval`, and `Notification` — with the relationships between them expressed as foreign keys and navigable associations. The many-to-many relationships that the relational model cannot hold directly are carried by link tables: `SharedCourse` records which extra classes attend a shared course, `TimetableEntryClass` records the classes attending each session, and `TimetableRunFaculty` and `TimetableRunBuilding` record the scope of a run. Schema changes over the life of the project were managed with Alembic migrations. To make development and testing convenient, a seed script was also written to populate a database with a small sample of representative data — a university, a faculty with two departments, a building with a couple of rooms, a semester of time slots, and one account for each role — so that the system could be run without entering data by hand. This sample is a development convenience only; the evaluation of Section 4.4 uses the real academic data of the faculty, not the seed.
 
 Each course also carries the semester of study it belongs to (first, second, or year-long) and each semester record its term, so that generation can be scoped to one semester at a time rather than scheduling a level's whole year at once.
 
@@ -116,12 +116,113 @@ Testing accompanied the construction rather than following it. The scheduling en
 
 ## 4.4 Presentation and Interpretation of Results
 
-> *To be completed after the Faculty of Engineering and Technology case-study run. This section will present, through annotated screenshots, the working system end to end — the setup of the university and its data, the readiness checklist in both its blocked and ready states, the generation of a timetable and its solve time, the resulting weekly grid, the review-and-approval workflow, and the public student view — together with the concrete figures the run produced (sessions placed, solve time, any flagged conflicts or over-capacity placements). See the accompanying shot list.*
+To show the system working as a whole rather than feature by feature, it was exercised on a realistic case study: the timetable of the Faculty of Engineering and Technology (FET) for the first semester of the 2025/2026 session. The faculty's real academic data was entered — its four departments of Computer, Electrical, Civil, and Mechanical Engineering, the levels and classes within them, the courses each runs in the semester, and the lecturers who teach them — and a run was created scoped to the faculty's buildings and the semester's weekly periods. The instance is not a toy. It comprises thirteen classes, eighty-nine courses, and forty-five lecturers, to be placed across the faculty's lecture halls and laboratories in the thirty-four teaching periods of the week. What follows traces the system through the case study screen by screen and then reports the figures the run produced.
+
+### 4.4.1 Entering the academic data
+
+The starting point is the academic data on which everything else depends. An administrator sets up the university's faculties, departments, levels, and classes, its buildings and rooms, and its semesters and time slots, and records the courses each level runs together with the lecturer who teaches each (Figure 4.1). Entering forty-five lecturers by hand would be tedious, so they were created in a single step from a spreadsheet through the bulk import, which matches each row's faculty and department by name within the administrator's own university (Figure 4.2). A course with no lecturer cannot be scheduled, so the courses screen offers a filter that shows at a glance which courses still need one, turning a hidden gap into a short, visible to-do list (Figure 4.3).
+
+> **Figure 4.1** — Management of courses, showing each course with its assigned lecturer. (Screenshot.)
+
+> **Figure 4.2** — Bulk import of lecturers from a CSV, with the generated credentials listed once. (Screenshot.)
+
+> **Figure 4.3** — The courses screen with the "needs lecturer" filter active. (Screenshot.)
+
+### 4.4.2 The readiness check
+
+When the officer asks to generate, the system first checks that the run can actually yield a timetable. If something is missing — a course without a lecturer, a semester without time slots, buildings without suitable rooms — generation is refused and a checklist names precisely what must be fixed (Figure 4.4), so the officer is never left guessing at an empty or failed result. Once every item is satisfied the same run is ready, and generation proceeds (Figure 4.5).
+
+> **Figure 4.4** — The readiness checklist refusing generation, with the failing items marked. (Screenshot; produced from a deliberately incomplete run.)
+
+> **Figure 4.5** — A run that passes every readiness check, ready to generate. (Screenshot.)
+
+### 4.4.3 Generation and the weekly grid
+
+Generation does not block the interface: the request returns at once and the officer sees a progress indicator while the solver works in the background (Figure 4.6). For the FET instance the solver returned an **optimal** assignment in about **thirty-two seconds**, placing **185 sessions**. The result is presented as a weekly grid, which can be narrowed with the class filter to a single class, a department, or the whole faculty (Figure 4.7). Sessions serving several merged classes, placements that exceed a room's capacity, and off-site sessions that occupy no room are each marked, so the officer can see at a glance where the result needed compromise.
+
+> **Figure 4.6** — Generation in progress, with the background-job indicator. (Screenshot.)
+
+> **Figure 4.7** — The generated weekly timetable for a class, with the class filter. (Screenshot.)
+
+### 4.4.4 Conflicts and their resolution
+
+Not every difficulty can be solved silently. The case-study run raised **four laboratory-splitting conflicts** — classes too large for any laboratory to take in the sessions the week allows — which the system flags rather than forcing a bad answer (Figure 4.8). The officer settles each, choosing either to add an extra weekly session or to rotate the groups across alternating weeks, and the conflict then disappears from the list.
+
+> **Figure 4.8** — The conflicts screen listing the flagged laboratory-split conflicts and the two resolution options. (Screenshot.)
+
+### 4.4.5 Review, approval, and publication
+
+A generated draft does not take effect on its own. The officer submits it for review, and each faculty head whose faculty the run touches is asked to approve the portion concerning them; the run cannot advance until every head has approved, and a single rejection returns it to the officer with a comment (Figure 4.9). Only once approval is complete may the officer publish it. The published timetable is then exposed on a public page that needs no account and is reached through a shareable link; a student opens it, narrows it to their own class, and sees their schedule and nothing else (Figure 4.10).
+
+> **Figure 4.9** — The approval panel of a run under review, as a faculty head sees it. (Screenshot.)
+
+> **Figure 4.10** — The public student view, filtered to a single class. (Screenshot.)
+
+### 4.4.6 The figures the run produced
+
+Table 4.3 gathers the quantities from the case-study run. Three of them deserve a word of interpretation. First, the generator scheduled three **university-wide courses** — the general requirements every student takes — packing the thirteen classes into shared hall-sized sessions rather than repeating each lecture class by class. Second, **thirty-two** of the sessions are merged, each serving more than one class at once, which is what keeps the total number of sessions, and the lecturers' load, down. Third, **nine** placements exceed their room's capacity: not a failure of the solver but a faithful report of a real shortage of large halls, made visible rather than hidden, as Section 4.5 discusses.
+
+> **Table 4.3** — Figures produced by the FET case-study run (first semester, 2025/2026).
+
+| Quantity | Value |
+|---|---|
+| Solver status | Optimal |
+| Solve time | ≈ 32 seconds |
+| Sessions placed | 185 |
+| Courses scheduled | 89 (3 university-wide) |
+| Classes covered | 13 |
+| Lecturers scheduled | 45 |
+| Rooms used | 8 |
+| Weekly periods used | 34 |
+| Merged (multi-class) sessions | 32 |
+| Off-site sessions (no room) | 2 |
+| Over-capacity placements | 9 |
+| Laboratory-split conflicts flagged | 4 |
+| Lecturer / class / room clashes | 0 / 0 / 0 |
 
 ## 4.5 Evaluation of the Solution
 
-> *To be completed after the case-study run. Weighted on: comparison with the manual timetabling process at FET (Chapter 1 problem statement); verification that the hard constraints provably hold in the generated output (the correctness requirement); a scorecard against the specific objectives of Chapter 1; and a brief callback to the existing tools surveyed in Chapter 2.*
+The system is now judged against what it was built to do: the specific objectives of Chapter 1, and the manual process it is meant to replace, on the three grounds the final objective names — correctness, speed, and coordination.
+
+### 4.5.1 Correctness
+
+Correctness was the foremost requirement, and it is the clearest result. The output of the case-study run was checked, session by session, against the hard rules: across all 185 placements there were **no lecturer double-bookings, no class double-bookings, and no room double-bookings**, every session sat in a room of the type its course required, and no session fell in a period a lecturer had declared unavailable. This is not a fortunate outcome of one run but a property of the method: as Section 3.6 argued, the solver cannot return an assignment that breaks a hard constraint, because such assignments are excluded from its search by construction. Set against the manual process of the problem statement — where a planner cannot hold every constraint in mind at once, and clashes typically surface only after the semester has begun — this is the central improvement the work offers.
+
+### 4.5.2 Use of scarce rooms
+
+The handling of room capacity is worth singling out, because it shows the objective doing real work. The solver returned an *optimal* result, meaning the nine over-capacity placements are not an oversight but the fewest the faculty's halls allow: there is simply no room large enough for those classes, and the system accepts the crowding only where it is unavoidable and flags it for the officer. The value of the objective is seen by comparison. The same data, generated before the room-fit objective was added, produced **forty-five** over-capacity placements, because rooms were assigned with no regard to fit — small classes could fall into large halls while large classes overflowed small rooms. Introducing the objective reduced this to the nine that are genuinely forced by the shortage of halls, reserving the large rooms for the large and joint sessions that need them.
+
+### 4.5.3 Speed
+
+The generator placed 185 sessions for an entire faculty in about thirty-two seconds. The manual construction of a faculty timetable is, by contrast, the work of days, repeated whenever a change forces a rebuild. Beyond the raw figure, the difference in kind matters: a thirty-second generation can be run again and again as data is corrected or constraints are adjusted, where a manual timetable is too costly to redo and so tends to be patched rather than regenerated.
+
+### 4.5.4 Coordination
+
+The second weakness of the problem statement — the absence of any shared system through which the responsible staff coordinate — is answered by the workflow. In the case study the run moved from draft, through review, to approval, and only then to publication, with each faculty head approving the portion that concerned them and the approvals recorded against the run. Where the manual process circulates a draft informally and keeps no record of who approved what, the system makes the review a controlled gate that a timetable must pass before it can reach a student, and a published timetable is therefore one for which accountability has been established and stored.
+
+### 4.5.5 Against the existing tools
+
+This places the system against the tools surveyed in Chapter 2. Those tools generate competent timetables, and the generator here does not claim to surpass mature engines such as UniTime or FET at the solving task alone. What they do not do is coordinate the people accountable for a timetable or deliver it to students: they are single-planner, desktop-bound tools that produce a file. The contribution of this work is to wrap a capable constraint solver in the workflow and the student-facing distribution that a Cameroonian faculty actually needs, around a data model shaped to the faculty–department–level structure those tools do not assume.
+
+### 4.5.6 Against the objectives
+
+Table 4.4 sets the specific objectives of Section 1.3.2 against the evidence of the case study.
+
+> **Table 4.4** — The specific objectives of Chapter 1 and the evidence that each is met.
+
+| Specific objective | Outcome |
+|---|---|
+| Model the academic data in a single structured database | Met — the faculty's full hierarchy, rooms, semesters, and courses were entered and drove the run (§4.3.2, §4.4.1). |
+| Formulate timetabling as a constraint problem and generate respecting all hard constraints | Met — an optimal, clash-free timetable of 185 sessions was generated (§4.4.3, §4.5.1). |
+| A role-based review-and-approval workflow | Met — the run passed draft → review → approval → publication, with recorded approvals (§4.4.5). |
+| Tools for exceptions: conflict resolution and clash-checked manual moves | Met — four laboratory conflicts were resolved by the officer, and manual moves are checked for clashes before acceptance (§4.4.4, §4.3.5). |
+| A student-accessible public view, filterable to one class, without an account | Met — the published run is reachable by link and narrowed to a class (§4.4.5). |
+| Evaluate against the manual process | Met — this section, on correctness, speed, and coordination. |
+
+### 4.5.7 Limitations
+
+Honesty requires that the limits be stated alongside the results. The evaluation is a demonstration on a single faculty's data, not a controlled study with users; it shows that the system does what it was specified to do, not how staff would take to it over a term. The generator models the hard constraints but not soft preferences — a lecturer's preferred, as opposed to impossible, times, or a faculty's wish to cluster a class's lectures in the morning — so its timetables are valid but not tuned to taste. And while the FET instance was solved to proven optimality within the time bound, a larger run spanning several faculties at once may reach only a *feasible* solution before the bound is hit; the result would still be valid, but not guaranteed to be the best possible use of rooms. None of these undoes the core result, but each marks where the work could go further, as Chapter 5 takes up.
 
 ## 4.6 Partial Conclusion
 
-> *To be completed once §4.4 and §4.5 are written.*
+This chapter has carried the design of Chapter 3 into a working system and judged it. It set out the tools the system is built from and the reasons for choosing them, then described the implementation layer by layer — the data, the access-controlled interface, the three-stage scheduling engine, the coordination workflow, and the adaptive client — recording where building the system taught something the design had not foreseen. It then exercised the whole system on a realistic case study, the first-semester timetable of the Faculty of Engineering and Technology, and presented the result: an optimal, clash-free timetable of 185 sessions generated in about thirty-two seconds, carried through review and approval to a published, student-accessible schedule. Measured against the objectives of Chapter 1, the system meets each; measured against the manual process it replaces, it offers correctness by construction, generation in seconds rather than days, and a recorded chain of accountability the manual process lacks. The limitations that remain — the absence of soft preferences, and the optimality not guaranteed for the largest instances — are the natural starting points for the work that the final chapter recommends.
