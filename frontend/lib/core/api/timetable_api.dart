@@ -116,6 +116,16 @@ class TimetableApi {
     return List<int>.from(response.data as List);
   }
 
+  /// Public export (no auth, published runs only) — used by the student view.
+  Future<List<int>> downloadPublicExport(int runId, String format,
+      {List<int>? classIds}) async {
+    final path = (classIds != null && classIds.isNotEmpty)
+        ? '/export/public/runs/$runId/$format?class_ids=${classIds.join(',')}'
+        : '/export/public/runs/$runId/$format';
+    final response = await _client.downloadFile(path);
+    return List<int>.from(response.data as List);
+  }
+
   Future<TimetableRun> submitForReview(int runId) async {
     final response = await _client.post('/runs/$runId/submit-for-review');
     return TimetableRun.fromJson(response.data as Map<String, dynamic>);

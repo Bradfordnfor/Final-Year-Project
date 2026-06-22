@@ -24,4 +24,11 @@ class AuthApi {
       'new_password': newPassword,
     });
   }
+
+  /// Updates the current user's email and returns the refreshed account.
+  Future<UserModel> changeEmail(String email) async {
+    final response =
+        await _client.post('/auth/change-email', data: {'email': email});
+    return UserModel.fromJson(response.data as Map<String, dynamic>);
+  }
 }

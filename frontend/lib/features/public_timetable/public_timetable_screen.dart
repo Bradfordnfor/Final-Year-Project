@@ -1,3 +1,6 @@
+import 'dart:html' as html;
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -99,6 +102,45 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
 
   static const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
+  Future<void> _downloadPublic(String format) async {
+    final run = _selectedRun;
+    if (run == null) return;
+    try {
+      final bytes = await TimetableApi(_client)
+          .downloadPublicExport(run.id, format, classIds: _filteredClassIds);
+      final blob = html.Blob([Uint8List.fromList(bytes)]);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      final suffix =
+          (_filteredClassIds != null && _filteredClassIds!.isNotEmpty)
+              ? '_filtered'
+              : '';
+      html.AnchorElement(href: url)
+        ..setAttribute('download', 'timetable_${run.id}$suffix.$format')
+        ..click();
+      html.Url.revokeObjectUrl(url);
+    } catch (e) {
+      Get.snackbar('Download failed', e.toString(),
+          snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
+  Widget _exportButtons() {
+    if (_entries.isEmpty) return const SizedBox.shrink();
+    final filtered = _filteredClassIds != null;
+    // Public view offers PDF only — the printable form a student wants.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: OutlinedButton.icon(
+          onPressed: () => _downloadPublic('pdf'),
+          icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+          label: Text(filtered ? 'Download PDF (filtered)' : 'Download PDF'),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -160,6 +202,7 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
                                 onScopeSelected: (ids) =>
                                   setState(() => _filteredClassIds = ids),
                               ),
+                              _exportButtons(),
                               Expanded(
                                 child: _TimetableView(
                                   run: _selectedRun,
@@ -201,6 +244,7 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
                               onScopeSelected: (ids) =>
                                   setState(() => _filteredClassIds = ids),
                             ),
+                            _exportButtons(),
                             Expanded(
                               child: _TimetableView(
                                 run: _selectedRun,

@@ -204,7 +204,7 @@ class _SidebarLayout extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.manage_accounts_outlined),
                     title: const Text('My Account'),
-                    onTap: () => _showChangePasswordDialog(context),
+                    onTap: () => _showAccountDialog(context),
                   ),
                   ListTile(
                     leading: const Icon(Icons.logout),
@@ -396,7 +396,7 @@ class _BottomNavLayout extends StatelessWidget {
               title: const Text('My Account'),
               onTap: () {
                 Navigator.pop(context);
-                _showChangePasswordDialog(context);
+                _showAccountDialog(context);
               },
             ),
             ListTile(
@@ -530,6 +530,145 @@ class _Dest {
 }
 
 // ── Change Password Dialog ─────────────────────────────────────────────────────
+
+String _prettyRole(String role) => role
+    .split('_')
+    .where((w) => w.isNotEmpty)
+    .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+    .join(' ');
+
+/// "My Account" — shows the user's name and role (read-only), lets them edit
+/// their email, and opens the change-password dialog on demand.
+Future<void> _showAccountDialog(BuildContext context) async {
+  final user = AuthController.to.user.value;
+  if (user == null) return;
+  final emailCtrl = TextEditingController(text: user.email);
+  String? errorMsg;
+  bool saving = false;
+
+  await showDialog(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setS) => AlertDialog(
+        title: const Text('My Account'),
+        content: SizedBox(
+          width: 340,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _AccountField(label: 'Name', value: user.fullName),
+              const SizedBox(height: 12),
+              _AccountField(label: 'Role', value: _prettyRole(user.role)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                onChanged: (_) => setS(() => errorMsg = null),
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (errorMsg != null) ...[
+                const SizedBox(height: 8),
+                Text(errorMsg!,
+                    style: TextStyle(
+                        color: Theme.of(ctx).colorScheme.error, fontSize: 12)),
+              ],
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.lock_outline, size: 18),
+                  label: const Text('Change password'),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showChangePasswordDialog(context);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          FilledButton(
+            onPressed: (saving ||
+                    emailCtrl.text.trim().isEmpty ||
+                    emailCtrl.text.trim() == user.email)
+                ? null
+                : () async {
+                    setS(() => saving = true);
+                    try {
+                      final updated =
+                          await AuthApi(ApiClient(token: AuthController.to.token))
+                              .changeEmail(emailCtrl.text.trim());
+                      AuthController.to.user.value = updated;
+                      if (ctx.mounted) {
+                        Navigator.pop(ctx);
+                        Get.snackbar('Email updated', '',
+                            snackPosition: SnackPosition.BOTTOM,
+                            duration: const Duration(seconds: 2));
+                      }
+                    } on DioException catch (e) {
+                      final detail = (e.response?.data as Map?)?['detail']
+                              as String? ??
+                          'Failed to update email';
+                      setS(() {
+                        errorMsg = detail;
+                        saving = false;
+                      });
+                    } catch (e) {
+                      setS(() {
+                        errorMsg = e.toString();
+                        saving = false;
+                      });
+                    }
+                  },
+            child: saving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Save'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _AccountField extends StatelessWidget {
+  final String label;
+  final String value;
+  const _AccountField({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: TextStyle(
+                fontSize: 11,
+                color: cs.outline,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.4)),
+        const SizedBox(height: 2),
+        Text(value, style: const TextStyle(fontSize: 14)),
+      ],
+    );
+  }
+}
 
 Future<void> _showChangePasswordDialog(BuildContext context) async {
   final currentCtrl = TextEditingController();
