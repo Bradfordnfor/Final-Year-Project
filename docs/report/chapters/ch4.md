@@ -202,7 +202,7 @@ The second weakness of the problem statement — the absence of any shared syste
 
 ### 4.5.5 Against the existing tools
 
-This places the system against the tools surveyed in Chapter 2. Those tools generate competent timetables, and the generator here does not claim to surpass mature engines such as UniTime or FET at the solving task alone. What they do not do is coordinate the people accountable for a timetable or deliver it to students: they are single-planner, desktop-bound tools that produce a file. The contribution of this work is to wrap a capable constraint solver in the workflow and the student-facing distribution that a Cameroonian faculty actually needs, around a data model shaped to the faculty–department–level structure those tools do not assume.
+This places the system against the tools surveyed in Chapter 2. Those tools generate competent timetables, and the generator here does not claim to surpass mature engines such as UniTime at the solving task alone. What they do not do is coordinate the people accountable for a timetable or deliver it to students: they are single-planner, desktop-bound tools that produce a file. The contribution of this work is to wrap a capable constraint solver in the workflow and the student-facing distribution that a Cameroonian faculty actually needs, around a data model shaped to the faculty–department–level structure those tools do not assume.
 
 ### 4.5.6 Against the objectives
 

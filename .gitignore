@@ -44,3 +44,6 @@ Thumbs.db
 lecturer_credentials.csv
 # PlantUML renderer binary (downloaded tool, not source)
 docs/report/diagrams/plantuml.jar
+
+# Generated dissertation build output (regenerate with build_report.py)
+docs/report/Dissertation.docx
