@@ -157,4 +157,23 @@ class TimetableApi {
       'new_room_id': newRoomId,
     });
   }
+
+  /// Peel one class out of a merged session into its own session.
+  Future<void> splitClass(
+      int runId, int entryId, int classId, int newSlotId, int newRoomId) async {
+    await _client.post('/runs/$runId/entries/$entryId/split-class', data: {
+      'class_id': classId,
+      'new_time_slot_id': newSlotId,
+      'new_room_id': newRoomId,
+    });
+  }
+
+  /// Fold a class from one session into another session of the same course.
+  Future<void> mergeClass(
+      int runId, int sourceEntryId, int classId, int targetEntryId) async {
+    await _client.post('/runs/$runId/entries/$sourceEntryId/merge-class', data: {
+      'class_id': classId,
+      'target_entry_id': targetEntryId,
+    });
+  }
 }

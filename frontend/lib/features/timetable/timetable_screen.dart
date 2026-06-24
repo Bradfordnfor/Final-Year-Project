@@ -37,6 +37,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
   Map<int, String> _roomNames = {};
   Map<int, int> _roomCapacities = {};
   Map<int, String> _classNames = {};
+  Map<int, int> _classPopulations = {};
   List<Room> _allRooms = [];
   Map<int, String> _lecturerNames = {};
   bool _loadingMeta = true;
@@ -67,23 +68,18 @@ class _TimetableScreenState extends State<TimetableScreen> {
       final courses = results[3] as List<Course>;
       final rooms = results[4] as List<Room>;
 
-      // Load class names from faculty trees
+      // Load class names + populations (one call, works for the officer too).
       final classNames = <int, String>{};
-      for (final f in faculties) {
-        try {
-          final resp = await client.get('/faculty-setup/tree?faculty_id=${f.id}');
-          final tree = resp.data as Map<String, dynamic>;
-          for (final dept in (tree['departments'] as List? ?? [])) {
-            for (final lvl in ((dept as Map)['levels'] as List? ?? [])) {
-              final classId = (lvl as Map)['class_id'] as int?;
-              final className = lvl['name'] as String?;
-              if (classId != null && className != null) {
-                classNames[classId] = className;
-              }
-            }
-          }
-        } catch (_) {}
-      }
+      final classPops = <int, int>{};
+      try {
+        final resp = await client.get('/faculty-setup/classes');
+        for (final c in (resp.data as List)) {
+          final m = c as Map<String, dynamic>;
+          final id = m['id'] as int;
+          classNames[id] = m['name'] as String? ?? 'Class #$id';
+          classPops[id] = (m['population'] as int?) ?? 0;
+        }
+      } catch (_) {}
 
       // Load lecturer names keyed by Lecturer.id (not user id)
       final lecturerList = await UserApi(client).getLecturers();
@@ -102,6 +98,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
           _allRooms = rooms;
           _roomCapacities = {for (final r in rooms) r.id: r.capacity};
           _classNames = classNames;
+          _classPopulations = classPops;
           _lecturerNames = lecturerNames;
           _loadingMeta = false;
           final run = TimetableController.to.selected.value;
@@ -124,9 +121,23 @@ class _TimetableScreenState extends State<TimetableScreen> {
   }
 
   Future<void> _showMoveDialog(TimetableEntry entry, TimetableRun run) async {
+    // Move tab state.
     int? newSlotId = entry.timeSlotId;
     int? newRoomId = entry.roomId;
+    // "Take out" (split) tab state.
+    int? splitClassId = entry.classIds.isNotEmpty ? entry.classIds.first : null;
+    int? splitSlotId = entry.timeSlotId;
+    int? splitRoomId;
+    // "Put in" (merge) tab state.
+    int? mergeClassId = entry.classIds.isNotEmpty ? entry.classIds.first : null;
+    int? mergeTargetEntryId;
     String? errorMsg;
+
+    final sameCourseEntries = TimetableController.to.entries
+        .where((e) => e.courseId == entry.courseId && e.id != entry.id)
+        .toList();
+    final canSplit = entry.classIds.length > 1;
+    final canMerge = sameCourseEntries.isNotEmpty && entry.classIds.isNotEmpty;
 
     final courseName = _courseNames[entry.courseId] ?? 'Course #${entry.courseId}';
     final currentSlot = _timeSlots.firstWhere(
@@ -142,120 +153,363 @@ class _TimetableScreenState extends State<TimetableScreen> {
           }();
 
     final classNamesList = entry.classIds.map((id) {
-      return _classNames[id] ?? 'Class #$id';
+      final name = _classNames[id] ?? 'Class #$id';
+      final pop = _classPopulations[id];
+      return (pop != null && pop > 0) ? '$name ($pop)' : name;
     }).join(', ');
+    final totalPopulation = entry.classIds
+        .fold<int>(0, (sum, id) => sum + (_classPopulations[id] ?? 0));
+    final classLabel = entry.classIds.length > 1 && totalPopulation > 0
+        ? '$classNamesList  ·  $totalPopulation total'
+        : classNamesList;
+
+    // Dropdown items for the classes that sit in this session.
+    List<DropdownMenuItem<int>> classItems() => entry.classIds.map((id) {
+          final name = _classNames[id] ?? 'Class #$id';
+          final pop = _classPopulations[id];
+          final lbl = (pop != null && pop > 0) ? '$name ($pop)' : name;
+          return DropdownMenuItem(
+              value: id, child: Text(lbl, overflow: TextOverflow.ellipsis));
+        }).toList();
+
+    final slotItems = _timeSlots
+        .map((s) => DropdownMenuItem(
+              value: s.id,
+              child: Text('${s.dayOfWeek} ${s.label}',
+                  overflow: TextOverflow.ellipsis),
+            ))
+        .toList();
+    final roomItems = _allRooms
+        .map((r) => DropdownMenuItem(
+              value: r.id,
+              child: Text('${r.name} (${r.capacity} seats)',
+                  overflow: TextOverflow.ellipsis),
+            ))
+        .toList();
+
+    // A readable label for another session of the same course.
+    String entryLabel(TimetableEntry e) {
+      final slot = _timeSlots.firstWhere(
+        (s) => s.id == e.timeSlotId,
+        orElse: () => TimeSlot(id: 0, dayOfWeek: '?', startTime: '', endTime: '', semesterId: 0),
+      );
+      final roomTxt = e.roomId == null
+          ? 'off-site'
+          : (_roomNames[e.roomId] ?? 'Room #${e.roomId}');
+      final pop = e.classIds
+          .fold<int>(0, (sum, id) => sum + (_classPopulations[id] ?? 0));
+      final cap = e.roomId == null ? null : _roomCapacities[e.roomId];
+      final capTxt = cap != null ? '$pop/$cap' : '$pop';
+      return '${slot.dayOfWeek} ${slot.label} · $roomTxt · $capTxt';
+    }
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => AlertDialog(
-          title: Text(courseName),
-          content: SizedBox(
-            width: 360,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Expanded(
-                      child: _InfoCard(
-                        label: 'LECTURER',
-                        value: _lecturerNames[entry.lecturerId] ?? 'Lecturer #${entry.lecturerId}',
+        builder: (ctx, setS) {
+          // Runs an API call and, on success, closes the dialog and refreshes
+          // the grid (so the over-capacity / merged flags update).
+          Future<void> runAction(Future<void> Function(TimetableApi api) op) async {
+            try {
+              final api = TimetableApi(ApiClient(token: AuthController.to.token));
+              await op(api);
+              if (ctx.mounted) Navigator.pop(ctx);
+              TimetableController.to.fetchRuns();
+              await TimetableController.to.loadEntries(run.id);
+            } on DioException catch (e) {
+              final detail = (e.response?.data as Map?)?['detail'] as String? ??
+                  e.message ?? 'Unknown error';
+              setS(() => errorMsg = detail);
+            } catch (e) {
+              setS(() => errorMsg = e.toString());
+            }
+          }
+
+          return DefaultTabController(
+            length: 3,
+            child: AlertDialog(
+              title: Text(courseName),
+              content: SizedBox(
+                width: 380,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Shared header ──
+                    Row(children: [
+                      Expanded(
+                        child: _InfoCard(
+                          label: 'LECTURER',
+                          value: _lecturerNames[entry.lecturerId] ??
+                              'Lecturer #${entry.lecturerId}',
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _InfoCard(label: 'CLASS', value: classNamesList),
-                    ),
-                  ]),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(
-                      child: _InfoCard(
-                        label: 'CURRENT SLOT',
-                        value: '${currentSlot.dayOfWeek} ${currentSlot.label}',
-                        highlight: true,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _InfoCard(label: 'CLASS', value: classLabel),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _InfoCard(
-                        label: 'CURRENT ROOM',
-                        value: currentRoomLabel,
-                        highlight: true,
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<int>(
-                    value: newSlotId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Move to slot',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: _timeSlots.map((s) => DropdownMenuItem(
-                      value: s.id,
-                      child: Text('${s.dayOfWeek} ${s.label}',
-                          overflow: TextOverflow.ellipsis),
-                    )).toList(),
-                    onChanged: (v) => setS(() { newSlotId = v; errorMsg = null; }),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    value: newRoomId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Move to room',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: _allRooms.map((r) => DropdownMenuItem(
-                      value: r.id,
-                      child: Text('${r.name} (${r.capacity} seats)',
-                          overflow: TextOverflow.ellipsis),
-                    )).toList(),
-                    onChanged: (v) => setS(() { newRoomId = v; errorMsg = null; }),
-                  ),
-                  if (errorMsg != null) ...[
+                    ]),
                     const SizedBox(height: 8),
-                    Text(errorMsg!,
-                        style: TextStyle(
-                          color: Theme.of(ctx).colorScheme.error,
-                          fontSize: 12,
-                        )),
+                    Row(children: [
+                      Expanded(
+                        child: _InfoCard(
+                          label: 'CURRENT SLOT',
+                          value: '${currentSlot.dayOfWeek} ${currentSlot.label}',
+                          highlight: true,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _InfoCard(
+                          label: 'CURRENT ROOM',
+                          value: currentRoomLabel,
+                          highlight: true,
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
+                    const TabBar(
+                      labelStyle:
+                          TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      tabs: [
+                        Tab(text: 'Move'),
+                        Tab(text: 'Take out'),
+                        Tab(text: 'Put in'),
+                      ],
+                    ),
+                    SizedBox(
+                      height: 240,
+                      child: TabBarView(
+                        children: [
+                          // ── Tab 1: Move the whole session ──
+                          SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 12),
+                                DropdownButtonFormField<int>(
+                                  value: newSlotId,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Move to slot',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: slotItems,
+                                  onChanged: (v) => setS(() {
+                                    newSlotId = v;
+                                    errorMsg = null;
+                                  }),
+                                ),
+                                const SizedBox(height: 12),
+                                DropdownButtonFormField<int>(
+                                  value: newRoomId,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Move to room',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: roomItems,
+                                  onChanged: (v) => setS(() {
+                                    newRoomId = v;
+                                    errorMsg = null;
+                                  }),
+                                ),
+                                const SizedBox(height: 16),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: FilledButton(
+                                    onPressed:
+                                        (newSlotId != null && newRoomId != null)
+                                            ? () => runAction((api) => api.moveEntry(
+                                                run.id, entry.id, newSlotId!, newRoomId!))
+                                            : null,
+                                    child: const Text('Move'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // ── Tab 2: Take a class out (split) ──
+                          canSplit
+                              ? SingleChildScrollView(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 12),
+                                      const Text(
+                                        'Pull one class out into its own session.',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      DropdownButtonFormField<int>(
+                                        value: splitClassId,
+                                        isExpanded: true,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Class to take out',
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: classItems(),
+                                        onChanged: (v) => setS(() {
+                                          splitClassId = v;
+                                          errorMsg = null;
+                                        }),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      DropdownButtonFormField<int>(
+                                        value: splitSlotId,
+                                        isExpanded: true,
+                                        decoration: const InputDecoration(
+                                          labelText: 'New slot',
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: slotItems,
+                                        onChanged: (v) => setS(() {
+                                          splitSlotId = v;
+                                          errorMsg = null;
+                                        }),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      DropdownButtonFormField<int>(
+                                        value: splitRoomId,
+                                        isExpanded: true,
+                                        decoration: const InputDecoration(
+                                          labelText: 'New room',
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: roomItems,
+                                        onChanged: (v) => setS(() {
+                                          splitRoomId = v;
+                                          errorMsg = null;
+                                        }),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: FilledButton(
+                                          onPressed: (splitClassId != null &&
+                                                  splitSlotId != null &&
+                                                  splitRoomId != null)
+                                              ? () => runAction((api) =>
+                                                  api.splitClass(
+                                                      run.id,
+                                                      entry.id,
+                                                      splitClassId!,
+                                                      splitSlotId!,
+                                                      splitRoomId!))
+                                              : null,
+                                          child: const Text('Take out'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : const Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Text(
+                                    'Only a merged session (more than one class) '
+                                    'can have a class taken out.',
+                                    style: TextStyle(fontSize: 13),
+                                  ),
+                                ),
+                          // ── Tab 3: Put a class into another session (merge) ──
+                          canMerge
+                              ? SingleChildScrollView(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 12),
+                                      const Text(
+                                        'Move a class into another session of '
+                                        'the same course.',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      DropdownButtonFormField<int>(
+                                        value: mergeClassId,
+                                        isExpanded: true,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Class to move',
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: classItems(),
+                                        onChanged: (v) => setS(() {
+                                          mergeClassId = v;
+                                          errorMsg = null;
+                                        }),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      DropdownButtonFormField<int>(
+                                        value: mergeTargetEntryId,
+                                        isExpanded: true,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Into session',
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: sameCourseEntries
+                                            .map((e) => DropdownMenuItem(
+                                                  value: e.id,
+                                                  child: Text(entryLabel(e),
+                                                      overflow: TextOverflow
+                                                          .ellipsis),
+                                                ))
+                                            .toList(),
+                                        onChanged: (v) => setS(() {
+                                          mergeTargetEntryId = v;
+                                          errorMsg = null;
+                                        }),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: FilledButton(
+                                          onPressed: (mergeClassId != null &&
+                                                  mergeTargetEntryId != null)
+                                              ? () => runAction((api) =>
+                                                  api.mergeClass(
+                                                      run.id,
+                                                      entry.id,
+                                                      mergeClassId!,
+                                                      mergeTargetEntryId!))
+                                              : null,
+                                          child: const Text('Put in'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : const Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Text(
+                                    'There is no other session of this course '
+                                    'to put a class into.',
+                                    style: TextStyle(fontSize: 13),
+                                  ),
+                                ),
+                        ],
+                      ),
+                    ),
+                    if (errorMsg != null) ...[
+                      const SizedBox(height: 8),
+                      Text(errorMsg!,
+                          style: TextStyle(
+                            color: Theme.of(ctx).colorScheme.error,
+                            fontSize: 12,
+                          )),
+                    ],
                   ],
-                ],
+                ),
               ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Close'),
+                ),
+              ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: (newSlotId != null && newRoomId != null)
-                  ? () async {
-                      try {
-                        final api = TimetableApi(ApiClient(token: AuthController.to.token));
-                        await api.moveEntry(run.id, entry.id, newSlotId!, newRoomId!);
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        TimetableController.to.fetchRuns();
-                        await TimetableController.to.loadEntries(run.id);
-                      } on DioException catch (e) {
-                        final detail = (e.response?.data as Map?)?['detail']
-                            as String? ?? e.message ?? 'Unknown error';
-                        setS(() => errorMsg = detail);
-                      } catch (e) {
-                        setS(() => errorMsg = e.toString());
-                      }
-                    }
-                  : null,
-              child: const Text('Move'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

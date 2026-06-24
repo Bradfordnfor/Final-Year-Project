@@ -73,6 +73,17 @@ class ManualSlotMoveRequest(BaseModel):
     new_room_id: int
 
 
+class SplitClassRequest(BaseModel):
+    class_id: int
+    new_time_slot_id: int
+    new_room_id: int
+
+
+class MergeClassRequest(BaseModel):
+    class_id: int
+    target_entry_id: int
+
+
 class NotificationResponse(BaseModel):
     id: int
     message: str

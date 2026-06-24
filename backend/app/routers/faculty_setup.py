@@ -64,6 +64,19 @@ def get_public_levels(department_id: int, db: Session = Depends(get_db)):
     return result
 
 
+@router.get("/classes")
+def list_all_classes(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Every class with its name and population — used to label timetable
+    entries (e.g. "CE200 (200)") for any internal user, the officer included."""
+    return [
+        {"id": c.id, "name": c.name, "population": c.population}
+        for c in db.query(Class).all()
+    ]
+
+
 # ─── Faculty tree overview ───────────────────────────────────────────────────
 
 @router.get("/tree")
