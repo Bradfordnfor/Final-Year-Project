@@ -12,7 +12,7 @@ from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session
 
 from app.models.university import Department, Faculty
-from app.models.academic import TimeSlot, Semester
+from app.models.academic import TimeSlot, Semester, Level, Class
 from app.models.course import Course
 from app.models.room import Room
 
@@ -72,6 +72,28 @@ def check_run_readiness(run, db: Session) -> list[ReadinessItem]:
         detail="" if slot_count else "This semester has no time slots. Define the weekly slots first.",
     ))
 
+    # 5. The selected faculties contain at least one class. Without classes there
+    #    is nothing to schedule — even university-wide courses need classes to
+    #    sit them — so a faculty with no departments/levels/classes (e.g. one not
+    #    yet set up) can never produce a real timetable. Scoped exactly as the
+    #    preprocessor scopes its classes (Class -> Level -> Department -> faculty).
+    class_count = (
+        db.query(Class)
+        .join(Level, Level.id == Class.level_id)
+        .join(Department, Department.id == Level.department_id)
+        .filter(Department.faculty_id.in_(faculty_ids))
+        .count()
+        if faculty_ids else 0
+    )
+    items.append(ReadinessItem(
+        key="classes",
+        label="The selected faculties have at least one class",
+        ok=class_count > 0,
+        detail="" if class_count else
+        "The selected faculties have no classes. Add departments, levels and "
+        "classes (with their student populations) before generating.",
+    ))
+
     # Courses in scope: same as the preprocessor (departments of selected faculties)
     dept_ids = [
         d.id for d in
@@ -120,10 +142,12 @@ def check_run_readiness(run, db: Session) -> list[ReadinessItem]:
 
     # 7. A room exists for each room type the courses require. Outdoor courses
     #    are excluded: they run off-site and need no building room at all.
+    # With no classes there are no sessions, hence no room demand — don't nag
+    # about a missing room type until there is actually something to place.
     required_types = {
         c.room_type_required for c in courses
         if c.room_type_required and c.room_type_required != "outdoor"
-    }
+    } if class_count else set()
     available_types = {r.room_type for r in active_rooms}
     missing_types = sorted(required_types - available_types)
     items.append(ReadinessItem(

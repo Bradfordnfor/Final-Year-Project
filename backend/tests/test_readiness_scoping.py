@@ -106,6 +106,54 @@ def test_empty_run_reports_missing_faculties_and_buildings(db, admin_user):
     assert {"faculties", "buildings", "courses"}.issubset(failed)
 
 
+# ─── A faculty with no classes is not ready ───────────────────────────────────
+
+def test_not_ready_when_faculty_has_no_classes(db, admin_user):
+    """FHS-style: a faculty with no departments/classes, while the university
+    has a university-wide course (with a lecturer). The checklist must flag the
+    missing classes and must NOT nag about room types — with no classes there
+    are no sessions, so there is no room demand to satisfy yet."""
+    uni = University(name="UB", slug="ub-noclass", overflow_threshold=0.2)
+    db.add(uni); db.flush()
+    fac = Faculty(name="FHS", code="FHS", sessions_per_week=2,
+                  session_duration_hours=2, university_id=uni.id)
+    db.add(fac); db.flush()                       # no departments / levels / classes
+    sem = Semester(name="S1", start_date="2025-09-01", end_date="2026-01-31",
+                   is_active=True, university_id=uni.id)
+    db.add(sem); db.flush()
+    db.add(TimeSlot(day_of_week="Monday", start_time="07:00",
+                    end_time="09:00", semester_id=sem.id)); db.flush()
+    bld = Building(name="Health Block", university_id=uni.id)
+    db.add(bld); db.flush()
+    # The only room is a lab, but the university-wide course needs a lecture hall.
+    db.add(Room(name="Lab 1", capacity=60, room_type="lab",
+                is_active=True, building_id=bld.id)); db.flush()
+    luser = User(email="lect_uw@ub.cm", hashed_password="x", full_name="Dr UW",
+                 role="lecturer", is_active=True)
+    db.add(luser); db.flush()
+    # A department is needed only to hang the lecturer off; it has no classes.
+    dept = Department(name="GS", code="GS", faculty_id=fac.id)
+    db.add(dept); db.flush()
+    lect = Lecturer(user_id=luser.id, department_id=dept.id)
+    db.add(lect); db.flush()
+    db.add(Course(code="GST101", name="Use of English",
+                  room_type_required="lecture_hall", level_id=None,
+                  department_id=None, university_id=uni.id,
+                  lecturer_id=lect.id, weekly_hours=2)); db.flush()
+    run = TimetableRun(name="FHS Run", semester_id=sem.id,
+                       created_by=admin_user.id, status="draft")
+    db.add(run); db.flush()
+    db.add(TimetableRunFaculty(run_id=run.id, faculty_id=fac.id))
+    db.add(TimetableRunBuilding(run_id=run.id, building_id=bld.id))
+    db.commit(); db.refresh(run)
+
+    items = check_run_readiness(run, db)
+    failed = _failed_keys(items)
+    assert "classes" in failed, failed
+    # The room-type nag is gone: no classes means no sessions, no room demand.
+    assert "room_types" not in failed, failed
+
+
 # ─── Outdoor courses need no building room ────────────────────────────────────
 
 def test_outdoor_course_is_ready_without_a_matching_room(db, admin_user):
