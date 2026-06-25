@@ -17,7 +17,8 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
   String? _fileName;
   Uint8List? _fileBytes;
   bool _uploading = false;
-  Map<String, dynamic>? _result;
+  Map<String, dynamic>? _preview;   // dry-run result awaiting confirm/cancel
+  Map<String, dynamic>? _result;    // committed result
   String? _error;
 
   Future<void> _pickFile() async {
@@ -31,14 +32,21 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
     setState(() {
       _fileName = file.name;
       _fileBytes = file.bytes;
+      _preview = null;
       _result = null;
       _error = null;
     });
   }
 
-  Future<void> _upload() async {
+  /// Send the CSV to the backend. With [dryRun] true it only validates and
+  /// returns the preview (nothing is created); false commits the import.
+  Future<void> _runImport({required bool dryRun}) async {
     if (_fileBytes == null || _fileName == null) return;
-    setState(() { _uploading = true; _error = null; _result = null; });
+    setState(() {
+      _uploading = true;
+      _error = null;
+      if (dryRun) { _preview = null; _result = null; }
+    });
 
     try {
       final token = AuthController.to.token;
@@ -53,8 +61,19 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
         'file': MultipartFile.fromBytes(_fileBytes!, filename: _fileName),
       });
 
-      final response = await dio.post('/users/bulk-import/', data: formData);
-      setState(() => _result = response.data as Map<String, dynamic>);
+      final response = await dio.post(
+        '/users/bulk-import/',
+        data: formData,
+        queryParameters: {'dry_run': dryRun},
+      );
+      setState(() {
+        if (dryRun) {
+          _preview = response.data as Map<String, dynamic>;
+        } else {
+          _result = response.data as Map<String, dynamic>;
+          _preview = null;
+        }
+      });
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -191,16 +210,16 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                             child: FilledButton.icon(
                               onPressed: (_fileBytes == null || _uploading)
                                   ? null
-                                  : _upload,
+                                  : () => _runImport(dryRun: true),
                               icon: _uploading
                                   ? const SizedBox(
                                       width: 16, height: 16,
                                       child: CircularProgressIndicator(
                                           strokeWidth: 2, color: Colors.white),
                                     )
-                                  : const Icon(Icons.cloud_upload_outlined,
+                                  : const Icon(Icons.fact_check_outlined,
                                       size: 18),
-                              label: Text(_uploading ? 'Uploading…' : 'Import'),
+                              label: Text(_uploading ? 'Checking…' : 'Preview'),
                             ),
                           ),
                         ],
@@ -223,6 +242,115 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                         const SizedBox(width: 12),
                         Expanded(child: Text(_error!,
                             style: TextStyle(color: cs.onErrorContainer))),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+
+              // Preview (dry-run) — confirm or cancel before anything is created
+              if (_preview != null) ...[
+                const SizedBox(height: 24),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Icon(Icons.preview_outlined, color: cs.primary),
+                          const SizedBox(width: 10),
+                          Text('Preview — nothing saved yet',
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.bold)),
+                        ]),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Will create ${(_preview!['created'] as List?)?.length ?? 0}  ·  '
+                          'Will skip ${(_preview!['skipped'] as List?)?.length ?? 0}',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: cs.outline),
+                        ),
+                        const SizedBox(height: 12),
+                        ...(_preview!['created'] as List? ?? []).map((item) {
+                          final m = item as Map<String, dynamic>;
+                          final willGen = m['will_generate_password'] == true;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              children: [
+                                Icon(Icons.person_add_alt,
+                                    size: 16, color: cs.primary),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(m['name'] as String? ?? '',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 13)),
+                                      Text(
+                                          '${m['email']}  ·  ${m['faculty']} / ${m['department']}',
+                                          style: TextStyle(
+                                              fontSize: 11, color: cs.outline)),
+                                    ],
+                                  ),
+                                ),
+                                Text(willGen ? 'password auto' : 'from file',
+                                    style: TextStyle(
+                                        fontSize: 10, color: cs.outline)),
+                              ],
+                            ),
+                          );
+                        }),
+                        if ((_preview!['skipped'] as List?)?.isNotEmpty == true) ...[
+                          const SizedBox(height: 12),
+                          Text('Will be skipped:',
+                              style: Theme.of(context).textTheme.labelMedium
+                                  ?.copyWith(color: cs.outline)),
+                          const SizedBox(height: 4),
+                          ...(_preview!['skipped'] as List).map((item) {
+                            final m = item as Map<String, dynamic>;
+                            return Text('• ${m['email']} — ${m['reason']}',
+                                style: TextStyle(fontSize: 12, color: cs.outline));
+                          }),
+                        ],
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: _uploading
+                                    ? null
+                                    : () => setState(() => _preview = null),
+                                child: const Text('Cancel'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: (((_preview!['created'] as List?)
+                                                ?.isEmpty ??
+                                            true) ||
+                                        _uploading)
+                                    ? null
+                                    : () => _runImport(dryRun: false),
+                                icon: _uploading
+                                    ? const SizedBox(
+                                        width: 16, height: 16,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2, color: Colors.white),
+                                      )
+                                    : const Icon(Icons.check, size: 18),
+                                label: Text(
+                                  'Create ${(_preview!['created'] as List?)?.length ?? 0} account'
+                                  '${((_preview!['created'] as List?)?.length ?? 0) == 1 ? '' : 's'}',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),

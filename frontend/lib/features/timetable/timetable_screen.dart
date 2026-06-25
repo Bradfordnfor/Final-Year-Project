@@ -514,6 +514,105 @@ class _TimetableScreenState extends State<TimetableScreen> {
     );
   }
 
+  /// Delete a run. A published run is live on the public page, so it takes a
+  /// typed-name confirmation; any other status takes a plain yes/no confirm.
+  Future<void> _confirmAndDeleteRun(TimetableRun run) async {
+    final bool confirmed;
+    if (run.isPublished) {
+      confirmed = await _typedNameDeleteConfirm(run);
+    } else {
+      confirmed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Delete run?'),
+              content: Text(
+                'Delete "${run.name}"? This permanently removes the run and '
+                'any timetable generated for it. This cannot be undone.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: Theme.of(ctx).colorScheme.error),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+    }
+    if (!confirmed) return;
+    try {
+      await TimetableController.to.deleteRun(run.id);
+      Get.snackbar('Run deleted', '"${run.name}" was removed',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2));
+    } catch (e) {
+      Get.snackbar('Delete failed', e.toString(),
+          snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
+  /// Make the officer type the run's name before deleting a published run.
+  Future<bool> _typedNameDeleteConfirm(TimetableRun run) async {
+    final typed = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) {
+          final matches = typed.text.trim() == run.name.trim();
+          return AlertDialog(
+            title: const Text('Delete published run?'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This run is published and live on the public timetable. '
+                  'Deleting it removes it for everyone who has the link. This '
+                  'cannot be undone.',
+                  style: TextStyle(color: Theme.of(ctx).colorScheme.onSurface),
+                ),
+                const SizedBox(height: 12),
+                Text('Type the run name to confirm:',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(ctx).colorScheme.outline)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: typed,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: run.name,
+                    border: const OutlineInputBorder(),
+                  ),
+                  onChanged: (_) => setS(() {}),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(ctx).colorScheme.error),
+                onPressed: matches ? () => Navigator.pop(ctx, true) : null,
+                child: const Text('Delete'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    return ok ?? false;
+  }
+
   void _showCreateDialog() {
     if (_loadingMeta) return;
     if (_semesters.isEmpty) {
@@ -765,6 +864,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                 return _RunCard(
                                   run: r,
                                   isSelected: isActive,
+                                  onDelete:
+                                      canManage ? () => _confirmAndDeleteRun(r) : null,
                                   onTap: () async {
                                     await ctrl.selectRun(r.id);
                                     await _loadTimeSlots(r.semesterId);
@@ -854,8 +955,14 @@ class _RunCard extends StatelessWidget {
   final TimetableRun run;
   final bool isSelected;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
-  const _RunCard({required this.run, required this.isSelected, required this.onTap});
+  const _RunCard({
+    required this.run,
+    required this.isSelected,
+    required this.onTap,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -900,6 +1007,16 @@ class _RunCard extends StatelessWidget {
                           duration: const Duration(seconds: 2),
                         );
                       },
+                    ),
+                  const Spacer(),
+                  if (onDelete != null)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      tooltip: 'Delete run',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      color: cs.error,
+                      onPressed: onDelete,
                     ),
                 ],
               ),

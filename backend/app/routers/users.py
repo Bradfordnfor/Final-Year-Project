@@ -226,6 +226,7 @@ def update_student(
 @router.post("/users/bulk-import/")
 def bulk_import_lecturers(
     file: UploadFile = File(...),
+    dry_run: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -235,6 +236,12 @@ def bulk_import_lecturers(
     Faculty and department are matched by name (case-insensitive) within the
     importing admin's own university — no IDs needed. Each row is independent:
     a bad row is skipped with a reason rather than aborting the whole import.
+
+    With ``dry_run=true`` the file is validated and the same created/skipped
+    breakdown is returned, but nothing is written. This drives the preview the
+    admin reviews before confirming or cancelling. Rows whose password is blank
+    are flagged ``will_generate_password`` (the password itself is only minted on
+    the real commit). The response always carries the ``dry_run`` flag back.
     """
     from app.models.university import Faculty, Department
 
@@ -274,6 +281,7 @@ def bulk_import_lecturers(
 
     created = []
     skipped = []
+    seen_emails = set()
 
     for row in reader:
         name = (row.get("name") or "").strip()
@@ -302,11 +310,25 @@ def bulk_import_lecturers(
             })
             continue
 
+        if email.lower() in seen_emails:
+            skipped.append({"email": email, "reason": "duplicate row in file"})
+            continue
         if db.query(User).filter(User.email == email).first():
             skipped.append({"email": email, "reason": "already exists"})
             continue
+        seen_emails.add(email.lower())
 
         generated = not password
+
+        # Preview only describes what would happen — no account is minted.
+        if dry_run:
+            created.append({
+                "name": name, "email": email,
+                "faculty": faculty.name, "department": dept.name,
+                "will_generate_password": generated,
+            })
+            continue
+
         if generated:
             password = secrets.token_urlsafe(8)
 
@@ -329,5 +351,8 @@ def bulk_import_lecturers(
             entry["temp_password"] = password
         created.append(entry)
 
-    db.commit()
-    return {"created": created, "skipped": skipped}
+    if dry_run:
+        db.rollback()      # belt-and-braces: a preview must persist nothing
+    else:
+        db.commit()
+    return {"created": created, "skipped": skipped, "dry_run": dry_run}

@@ -29,9 +29,10 @@ def _setup_admin(db, client, *, with_university=True):
     return uni, {"Authorization": f"Bearer {token}"}
 
 
-def _post_csv(client, headers, text):
+def _post_csv(client, headers, text, dry_run=False):
     return client.post(
         "/users/bulk-import/",
+        params={"dry_run": "true"} if dry_run else None,
         files={"file": ("staff.csv", text, "text/csv")},
         headers=headers,
     )
@@ -107,3 +108,53 @@ def test_import_missing_columns_is_400(client, db):
     _uni, headers = _setup_admin(db, client)
     resp = _post_csv(client, headers, "name,email\nX,x@ub.cm\n")
     assert resp.status_code == 400
+
+
+# ─── Preview (dry-run) before committing ──────────────────────────────────────
+
+def test_preview_validates_without_creating_anyone(client, db):
+    _uni, headers = _setup_admin(db, client)
+    csv_text = (
+        "name,email,faculty,department,password\n"
+        "John Doe,jdoe@ub.cm,Faculty of Engineering and Technology,Computer Engineering,\n"
+        "Bad Dept,bd@ub.cm,Faculty of Engineering and Technology,Astronomy,\n"
+    )
+    body = _post_csv(client, headers, csv_text, dry_run=True).json()
+    assert body["dry_run"] is True
+    # One creatable candidate, one skipped — but nothing written.
+    assert len(body["created"]) == 1
+    john = body["created"][0]
+    assert john["email"] == "jdoe@ub.cm"
+    assert john["will_generate_password"] is True   # blank password in file
+    assert "temp_password" not in john              # not generated during preview
+    assert len(body["skipped"]) == 1
+    assert db.query(User).filter(User.email == "jdoe@ub.cm").first() is None
+
+
+def test_preview_then_commit_creates_accounts(client, db):
+    _uni, headers = _setup_admin(db, client)
+    csv_text = (
+        "name,email,faculty,department,password\n"
+        "John Doe,jdoe@ub.cm,Faculty of Engineering and Technology,Computer Engineering,\n"
+    )
+    _post_csv(client, headers, csv_text, dry_run=True)
+    assert db.query(User).filter(User.email == "jdoe@ub.cm").first() is None  # preview wrote nothing
+
+    body = _post_csv(client, headers, csv_text).json()                       # real commit
+    assert body["dry_run"] is False
+    assert len(body["created"]) == 1
+    assert "temp_password" in body["created"][0]
+    assert db.query(User).filter(User.email == "jdoe@ub.cm").first() is not None
+
+
+def test_preview_flags_duplicate_rows_within_the_file(client, db):
+    _uni, headers = _setup_admin(db, client)
+    csv_text = (
+        "name,email,faculty,department,password\n"
+        "One,dup@ub.cm,Faculty of Engineering and Technology,Computer Engineering,\n"
+        "Two,dup@ub.cm,Faculty of Engineering and Technology,Computer Engineering,\n"
+    )
+    body = _post_csv(client, headers, csv_text, dry_run=True).json()
+    assert len(body["created"]) == 1
+    assert len(body["skipped"]) == 1
+    assert "duplicate" in body["skipped"][0]["reason"].lower()
