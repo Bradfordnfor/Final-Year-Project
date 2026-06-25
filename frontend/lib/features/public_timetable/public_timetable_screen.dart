@@ -13,6 +13,7 @@ import '../../core/models/academic.dart';
 import '../../core/models/course.dart';
 import '../../core/models/room.dart';
 import '../../core/models/timetable.dart';
+import '../../core/utils/week_days.dart';
 import '../../core/widgets/class_filter_bar.dart';
 
 class PublicTimetableScreen extends StatefulWidget {
@@ -99,8 +100,6 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
       if (mounted) setState(() => _loadingEntries = false);
     }
   }
-
-  static const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
   Future<void> _downloadPublic(String format) async {
     final run = _selectedRun;
@@ -214,7 +213,6 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
                                       : _entries,
                                   timeSlots: _timeSlots,
                                   loading: _loadingEntries,
-                                  days: _days,
                                   courseNames: _courseNames,
                                   roomNames: _roomNames,
                                 ),
@@ -256,7 +254,6 @@ class _PublicTimetableScreenState extends State<PublicTimetableScreen> {
                                     : _entries,
                                 timeSlots: _timeSlots,
                                 loading: _loadingEntries,
-                                days: _days,
                                 courseNames: _courseNames,
                                 roomNames: _roomNames,
                               ),
@@ -335,13 +332,12 @@ class _TimetableView extends StatelessWidget {
   final List<TimetableEntry> entries;
   final List<TimeSlot> timeSlots;
   final bool loading;
-  final List<String> days;
   final Map<int, String> courseNames;
   final Map<int, String> roomNames;
 
   const _TimetableView({
     required this.run, required this.entries, required this.timeSlots,
-    required this.loading, required this.days,
+    required this.loading,
     this.courseNames = const {}, this.roomNames = const {},
   });
 
@@ -370,6 +366,7 @@ class _TimetableView extends StatelessWidget {
           style: TextStyle(color: cs.outline)));
     }
 
+    final days = displayWeekDays(timeSlots);
     final byDay = <String, List<TimeSlot>>{};
     for (final day in days) {
       byDay[day] = timeSlots.where((ts) => ts.dayOfWeek == day).toList()

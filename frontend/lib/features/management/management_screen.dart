@@ -13,6 +13,7 @@ import '../../core/models/academic.dart';
 import '../../core/models/course.dart';
 import '../../core/models/room.dart';
 import '../../core/models/university.dart';
+import '../../core/utils/week_days.dart';
 import '../../core/models/user.dart';
 
 class ManagementScreen extends StatelessWidget {
@@ -841,6 +842,7 @@ class _SemestersTabState extends State<_SemestersTab> {
   Future<void> _addTimeSlots(int semesterId) async {
     const allDays = [
       'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+      'Sunday',
     ];
     final selectedDays = <String>{
       'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
@@ -1168,7 +1170,7 @@ class _SemesterCardState extends State<_SemesterCard> {
     final sem = widget.semester;
     final slots = widget.slots;
 
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    final days = kWeekOrder;
     final byDay = <String, List<TimeSlot>>{
       for (final d in days)
         d: slots
@@ -2015,7 +2017,7 @@ class _AvailabilityTabState extends State<_AvailabilityTab> {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
-    final days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    final days = displayWeekDays(_slots);
     final slotsByDay = {
       for (final day in days)
         day: _slots.where((s) => s.dayOfWeek.toLowerCase() == day.toLowerCase()).toList()

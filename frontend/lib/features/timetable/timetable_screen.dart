@@ -19,6 +19,7 @@ import '../../core/models/course.dart';
 import '../../core/models/room.dart';
 import '../../core/models/timetable.dart';
 import '../../core/models/university.dart';
+import '../../core/utils/week_days.dart';
 import '../../core/widgets/class_filter_bar.dart';
 
 class TimetableScreen extends StatefulWidget {
@@ -1087,8 +1088,6 @@ class _TimetableGrid extends StatelessWidget {
     this.onEntryTap,
   });
 
-  static const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -1100,8 +1099,9 @@ class _TimetableGrid extends StatelessWidget {
       );
     }
 
+    final days = displayWeekDays(timeSlots);
     final byDay = <String, List<TimeSlot>>{};
-    for (final day in _days) {
+    for (final day in days) {
       byDay[day] = timeSlots.where((ts) => ts.dayOfWeek == day).toList()
         ..sort((a, b) => a.startTime.compareTo(b.startTime));
     }
@@ -1216,7 +1216,7 @@ class _TimetableGrid extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: _days.map((day) {
+              children: days.map((day) {
                 final slots = byDay[day] ?? [];
                 return SizedBox(
                   width: 164,
@@ -1671,16 +1671,13 @@ class _FreeRoomsPanel extends StatefulWidget {
 }
 
 class _FreeRoomsPanelState extends State<_FreeRoomsPanel> {
-  static const _dayOrder = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'
-  ];
   int? _slotId;
 
   List<TimeSlot> get _sortedSlots {
     final slots = [...widget.timeSlots];
     slots.sort((a, b) {
-      final da = _dayOrder.indexOf(a.dayOfWeek);
-      final db = _dayOrder.indexOf(b.dayOfWeek);
+      final da = kWeekOrder.indexOf(a.dayOfWeek);
+      final db = kWeekOrder.indexOf(b.dayOfWeek);
       if (da != db) return da.compareTo(db);
       return a.startTime.compareTo(b.startTime);
     });
