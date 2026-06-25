@@ -338,7 +338,10 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                     children: [
                                       const SizedBox(height: 12),
                                       const Text(
-                                        'Pull one class out into its own session.',
+                                        'Pull one class out into its own session. '
+                                        'If the chosen room already runs this same '
+                                        'course with the same lecturer in that '
+                                        'period, the class joins that session.',
                                         style: TextStyle(fontSize: 12),
                                       ),
                                       const SizedBox(height: 12),
@@ -933,6 +936,9 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                 currentUserId: currentUserId,
                                 courseNames: _courseNames,
                                 roomNames: _roomNames,
+                                facultyNames: {
+                                  for (final f in _faculties) f.id: f.code
+                                },
                                 filteredClassIds: _filteredClassIds,
                                 onEntryTap: (canManage || isFacultyHead)
                                     ? (entry) => _showMoveDialog(entry, selected)
@@ -1066,6 +1072,7 @@ class _TimetableGrid extends StatelessWidget {
   final int? currentUserId;
   final Map<int, String> courseNames;
   final Map<int, String> roomNames;
+  final Map<int, String> facultyNames;
   final List<int>? filteredClassIds;
   final void Function(TimetableEntry)? onEntryTap;
 
@@ -1076,6 +1083,7 @@ class _TimetableGrid extends StatelessWidget {
     this.isTimetableOfficer = false, this.isFacultyHead = false,
     this.currentUserId, this.filteredClassIds,
     this.courseNames = const {}, this.roomNames = const {},
+    this.facultyNames = const {},
     this.onEntryTap,
   });
 
@@ -1194,6 +1202,7 @@ class _TimetableGrid extends StatelessWidget {
                 run: run,
                 isFacultyHead: isFacultyHead,
                 currentUserId: currentUserId,
+                facultyNames: facultyNames,
               ),
             ),
           const SizedBox(height: 4),
@@ -1400,11 +1409,13 @@ class _ApprovalStatusPanel extends StatefulWidget {
   final TimetableRun run;
   final bool isFacultyHead;
   final int? currentUserId;
+  final Map<int, String> facultyNames;
 
   const _ApprovalStatusPanel({
     required this.run,
     required this.isFacultyHead,
     required this.currentUserId,
+    this.facultyNames = const {},
   });
 
   @override
@@ -1560,7 +1571,8 @@ class _ApprovalStatusPanelState extends State<_ApprovalStatusPanel> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Faculty #${a.facultyId} — ${a.status.toUpperCase()}',
+                          '${widget.facultyNames[a.facultyId] ?? 'Faculty #${a.facultyId}'}'
+                          ' — ${a.status.toUpperCase()}',
                           style: const TextStyle(fontSize: 12),
                         ),
                         if (a.isRejected && a.comment != null)

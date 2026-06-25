@@ -210,3 +210,113 @@ def test_merge_rejects_different_course(client, db):
         json={"class_id": ids["class_b"], "target_entry_id": target},
         headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 400
+
+
+# ── Take out onto an occupied hall (same course + same lecturer) ──────────────
+
+def _extra_class(db, population):
+    """Another class hung off the same level as the setup's classes."""
+    level_id = db.query(Class).first().level_id
+    cls = Class(name=f"CE200-X{population}", population=population, level_id=level_id)
+    db.add(cls); db.commit()
+    return cls.id
+
+
+def test_take_out_into_occupied_same_course_same_lecturer_merges(client, db):
+    ids = _setup(db)
+    class_c = _extra_class(db, 100)
+    # Source: A+B (300) crammed into the 200-seat room — the one we relieve.
+    source = _merged_entry(db, ids, [ids["class_a"], ids["class_b"]],
+                           ids["small"], ids["slot1"])
+    # Destination: class C alone in the 400-seat hall at another period, same
+    # course and lecturer as the source (every _merged_entry uses them).
+    dest = _merged_entry(db, ids, [class_c], ids["big"], ids["slot2"])
+    token = _token(client)
+
+    # Take B out and drop it onto the occupied destination hall+period.
+    resp = client.post(
+        f"/runs/{ids['run']}/entries/{source}/split-class",
+        json={"class_id": ids["class_b"], "new_time_slot_id": ids["slot2"],
+              "new_room_id": ids["big"]},
+        headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["merged_into_entry_id"] == dest
+    assert body["new_entry_id"] is None
+
+    db.expire_all()
+    d = db.get(TimetableEntry, dest)
+    assert sorted(ec.class_id for ec in d.entry_classes) == \
+        sorted([class_c, ids["class_b"]])          # B joined the destination
+    src = db.get(TimetableEntry, source)
+    assert [ec.class_id for ec in src.entry_classes] == [ids["class_a"]]  # B left source
+
+
+def test_take_out_into_occupied_different_course_rejected(client, db):
+    ids = _setup(db)
+    class_c = _extra_class(db, 100)
+    source = _merged_entry(db, ids, [ids["class_a"], ids["class_b"]],
+                           ids["small"], ids["slot1"])
+    other = Course(code="CE298", name="Other", level_id=None,
+                   department_id=None, weekly_hours=2)
+    db.add(other); db.flush()
+    dest = TimetableEntry(run_id=ids["run"], course_id=other.id,
+                          lecturer_id=ids["lec"], room_id=ids["big"],
+                          time_slot_id=ids["slot2"], week_pattern="every_week")
+    db.add(dest); db.flush()
+    db.add(TimetableEntryClass(entry_id=dest.id, class_id=class_c))
+    db.commit()
+    token = _token(client)
+
+    resp = client.post(
+        f"/runs/{ids['run']}/entries/{source}/split-class",
+        json={"class_id": ids["class_b"], "new_time_slot_id": ids["slot2"],
+              "new_room_id": ids["big"]},
+        headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 409
+
+
+def test_take_out_into_occupied_different_lecturer_rejected(client, db):
+    ids = _setup(db)
+    class_c = _extra_class(db, 100)
+    source = _merged_entry(db, ids, [ids["class_a"], ids["class_b"]],
+                           ids["small"], ids["slot1"])
+    # A second lecturer teaching the SAME course at the destination.
+    other_user = User(email="lec2@test.com",
+                      hashed_password=get_password_hash("pass123"),
+                      full_name="Lec2", role="lecturer", is_active=True)
+    db.add(other_user); db.flush()
+    lec_dept = db.get(Lecturer, ids["lec"]).department_id
+    lec2 = Lecturer(user_id=other_user.id, department_id=lec_dept)
+    db.add(lec2); db.flush()
+    dest = TimetableEntry(run_id=ids["run"], course_id=ids["course"],
+                          lecturer_id=lec2.id, room_id=ids["big"],
+                          time_slot_id=ids["slot2"], week_pattern="every_week")
+    db.add(dest); db.flush()
+    db.add(TimetableEntryClass(entry_id=dest.id, class_id=class_c))
+    db.commit()
+    token = _token(client)
+
+    resp = client.post(
+        f"/runs/{ids['run']}/entries/{source}/split-class",
+        json={"class_id": ids["class_b"], "new_time_slot_id": ids["slot2"],
+              "new_room_id": ids["big"]},
+        headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 409
+
+
+def test_take_out_into_occupied_over_capacity_rejected(client, db):
+    ids = _setup(db)
+    class_c = _extra_class(db, 150)
+    source = _merged_entry(db, ids, [ids["class_a"], ids["class_b"]],
+                           ids["big"], ids["slot1"])
+    # Destination is the 200-seat room: 150 (C) + 150 (B) = 300 > 200 * 1.2.
+    dest = _merged_entry(db, ids, [class_c], ids["small"], ids["slot2"])
+    token = _token(client)
+
+    resp = client.post(
+        f"/runs/{ids['run']}/entries/{source}/split-class",
+        json={"class_id": ids["class_b"], "new_time_slot_id": ids["slot2"],
+              "new_room_id": ids["small"]},
+        headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 409

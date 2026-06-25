@@ -523,9 +523,15 @@ def split_class(
     db: Session = Depends(get_db),
     _: User = Depends(require_timetable_officer),
 ):
-    """Peel one class out of a merged session into its own new session at a
-    chosen period and room. Used to relieve an over-capacity merged session."""
+    """Peel one class out of a merged session. The class lands at the chosen
+    period and room. If that hall is free in that period it becomes the class's
+    own new session; if that hall already runs the SAME course with the SAME
+    lecturer in that period, the class simply joins that existing session (as
+    long as the combined population fits within the room's overflow allowance).
+    Used to relieve an over-capacity merged session — and to gather classes
+    pulled out of several halls into one, without hunting for an empty hall."""
     from app.models.room import Room
+    from app.models.academic import Class
 
     entry = db.query(TimetableEntry).filter(
         TimetableEntry.id == entry_id, TimetableEntry.run_id == run_id).first()
@@ -538,23 +544,62 @@ def split_class(
         raise HTTPException(status_code=400, detail="Nothing to split — the session has only this class")
 
     slot = data.new_time_slot_id
-    # No room clash at the target period.
-    if db.query(TimetableEntry).filter(
-            TimetableEntry.run_id == run_id, TimetableEntry.time_slot_id == slot,
-            TimetableEntry.room_id == data.new_room_id).first():
-        raise HTTPException(status_code=409, detail="That room is already used in that period")
-    # The lecturer must be free at the target period.
-    if db.query(TimetableEntry).filter(
-            TimetableEntry.run_id == run_id, TimetableEntry.time_slot_id == slot,
-            TimetableEntry.lecturer_id == entry.lecturer_id).first():
-        raise HTTPException(status_code=409, detail="The lecturer already has a session in that period")
-    # The class must be free at the target period.
+
+    # The class must be free at the target period — its current session excepted,
+    # since that is exactly what we are taking it out of.
     if (db.query(TimetableEntryClass)
             .join(TimetableEntry, TimetableEntry.id == TimetableEntryClass.entry_id)
             .filter(TimetableEntry.run_id == run_id,
                     TimetableEntry.time_slot_id == slot,
-                    TimetableEntryClass.class_id == data.class_id).first()):
+                    TimetableEntryClass.class_id == data.class_id,
+                    TimetableEntryClass.entry_id != entry.id).first()):
         raise HTTPException(status_code=409, detail="That class already has a session in that period")
+
+    # Is the destination hall already used in that period?
+    dest = db.query(TimetableEntry).filter(
+        TimetableEntry.run_id == run_id, TimetableEntry.time_slot_id == slot,
+        TimetableEntry.room_id == data.new_room_id).first()
+
+    if dest is not None:
+        # Joining an occupied hall is allowed only when it runs the same course
+        # with the same lecturer — then the two classes sit together. Anything
+        # else is a genuine clash.
+        if dest.id == entry.id:
+            raise HTTPException(
+                status_code=409,
+                detail="That is this session's own room and period — pick another")
+        if dest.course_id != entry.course_id or dest.lecturer_id != entry.lecturer_id:
+            raise HTTPException(
+                status_code=409,
+                detail="That room already holds a different course or lecturer "
+                       "in that period")
+        moving = db.get(Class, data.class_id)
+        combined = _entry_population(dest, db) + (moving.population if moving else 0)
+        if dest.room_id is not None:
+            room = db.get(Room, dest.room_id)
+            if room and combined > room.capacity * (1 + _run_overflow_threshold(run_id, db)):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Won't fit: {combined} students exceed {room.name} "
+                           f"({room.capacity} seats plus the overflow allowance)")
+        # Move the class from the source session into the destination session.
+        db.query(TimetableEntryClass).filter(
+            TimetableEntryClass.entry_id == entry.id,
+            TimetableEntryClass.class_id == data.class_id).delete()
+        db.add(TimetableEntryClass(entry_id=dest.id, class_id=data.class_id))
+        db.flush()
+        db.refresh(entry)
+        db.refresh(dest)
+        _recompute_flags(entry, db)
+        _recompute_flags(dest, db)
+        db.commit()
+        return {"ok": True, "new_entry_id": None, "merged_into_entry_id": dest.id}
+
+    # The hall is free — the lecturer must also be free, then make a new session.
+    if db.query(TimetableEntry).filter(
+            TimetableEntry.run_id == run_id, TimetableEntry.time_slot_id == slot,
+            TimetableEntry.lecturer_id == entry.lecturer_id).first():
+        raise HTTPException(status_code=409, detail="The lecturer already has a session in that period")
 
     # Remove the class from the merged session.
     db.query(TimetableEntryClass).filter(
@@ -576,7 +621,7 @@ def split_class(
     _recompute_flags(entry, db)
     _recompute_flags(new_entry, db)
     db.commit()
-    return {"ok": True, "new_entry_id": new_entry.id}
+    return {"ok": True, "new_entry_id": new_entry.id, "merged_into_entry_id": None}
 
 
 @router.post("/runs/{run_id}/entries/{entry_id}/merge-class",
