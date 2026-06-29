@@ -10,9 +10,9 @@ start
 :Officer creates a timetable run
 (semester, faculties, buildings);
 :Officer triggers generation;
-if (run ready? courses have lecturers;
-rooms of required types; time slots;
-courses in scope) then (no)
+if (run ready? classes and courses
+in scope, lecturers assigned, room
+types, time slots) then (no)
   :Reject — show readiness checklist
   of what is missing;
   stop
@@ -52,9 +52,9 @@ partition "Solving (CP-SAT)" {
   :Build boolean variables
   a[session, slot, room];
   :Add hard constraints
-  (each session once; no room,
-  class, lecturer double-booking;
-  room-type match; unavailability);
+  (each session once, no room,
+  class, lecturer double-booking,
+  room-type match, unavailability);
   :Search within time limit;
 }
 

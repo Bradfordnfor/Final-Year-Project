@@ -24,7 +24,7 @@ rectangle "Timetable System" {
   usecase "Manage buildings & rooms" as UC_bld
   usecase "Manage users (bulk import)" as UC_users
   usecase "Manage semesters & time slots" as UC_sem
-  usecase "Manage academic structure\n(faculties, depts, levels, classes)" as UC_struct
+  usecase "Manage academic structure\n(faculties, depts, levels, classes, groups)" as UC_struct
   usecase "Manage courses" as UC_course
 
   ' Faculty head
@@ -33,11 +33,16 @@ rectangle "Timetable System" {
   usecase "Review timetable section" as UC_review
   usecase "Approve / reject section" as UC_approve
 
+  ' Monitoring (university admin & faculty head)
+  usecase "View analytics\n(role-scoped)" as UC_analytics
+
   ' Timetable officer
   usecase "Create timetable run" as UC_run
   usecase "Generate timetable" as UC_gen
   usecase "Resolve conflicts" as UC_conf
   usecase "Move a session manually" as UC_move
+  usecase "Relieve over-capacity\n(split / merge a session)" as UC_relieve
+  usecase "Delete a timetable run" as UC_delrun
   usecase "Submit for review" as UC_submit
   usecase "Publish timetable" as UC_pub
   usecase "Export PDF / CSV" as UC_export
@@ -48,10 +53,12 @@ rectangle "Timetable System" {
 
   ' Student / public
   usecase "View public timetable\n(filter by class)" as UC_public
+  usecase "Download published\ntimetable (PDF)" as UC_pubdl
 
   ' Shared
   usecase "Log in" as UC_login
   usecase "Change password" as UC_pwd
+  usecase "Update email address" as UC_email
   usecase "Receive notifications" as UC_notif
 }
 
@@ -64,16 +71,20 @@ UA --> UC_users
 UA --> UC_sem
 UA --> UC_struct
 UA --> UC_course
+UA --> UC_analytics
 
 FH --> UC_facdata
 FH --> UC_assign
 FH --> UC_review
 FH --> UC_approve
+FH --> UC_analytics
 
 TO --> UC_run
 TO --> UC_gen
 TO --> UC_conf
 TO --> UC_move
+TO --> UC_relieve
+TO --> UC_delrun
 TO --> UC_submit
 TO --> UC_pub
 TO --> UC_export
@@ -82,16 +93,21 @@ LE --> UC_avail
 LE --> UC_own
 
 ST --> UC_public
+ST --> UC_pubdl
 
+SA --> UC_login
 UA --> UC_login
 FH --> UC_login
 TO --> UC_login
 LE --> UC_login
-SA --> UC_login
 UA --> UC_pwd
 FH --> UC_pwd
 TO --> UC_pwd
 LE --> UC_pwd
+UA --> UC_email
+FH --> UC_email
+TO --> UC_email
+LE --> UC_email
 FH --> UC_notif
 TO --> UC_notif
 LE --> UC_notif
@@ -101,5 +117,8 @@ UC_gen ..> UC_conf : <<extend>>
 UC_submit ..> UC_review : <<include>>
 UC_pub ..> UC_notif : <<include>>
 UC_users ..> UC_login : <<include>>
+UC_pubdl ..> UC_public : <<extend>>
+
+note bottom of UC_pubdl : Published runs only — no account required
 
 @enduml

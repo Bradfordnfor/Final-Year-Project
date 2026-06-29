@@ -17,6 +17,8 @@ rectangle "Timetabling & Access" {
   usecase "Generate timetable" as UC_gen
   usecase "Resolve conflicts" as UC_conf
   usecase "Move a session manually" as UC_move
+  usecase "Relieve over-capacity\n(split / merge a session)" as UC_relieve
+  usecase "Delete a timetable run" as UC_delrun
   usecase "Submit for review" as UC_submit
   usecase "Publish timetable" as UC_pub
   usecase "Export PDF / CSV" as UC_export
@@ -25,29 +27,39 @@ rectangle "Timetabling & Access" {
   usecase "View own schedule" as UC_own
 
   usecase "View public timetable\n(filter by class)" as UC_public
+  usecase "Download published\ntimetable (PDF)" as UC_pubdl
 
   usecase "Receive notifications" as UC_notif
   usecase "Change password" as UC_pwd
+  usecase "Update email address" as UC_email
 }
 
 TO --> UC_run
 TO --> UC_gen
 TO --> UC_conf
 TO --> UC_move
+TO --> UC_relieve
+TO --> UC_delrun
 TO --> UC_submit
 TO --> UC_pub
 TO --> UC_export
 TO --> UC_notif
 TO --> UC_pwd
+TO --> UC_email
 
 LE --> UC_avail
 LE --> UC_own
 LE --> UC_notif
 LE --> UC_pwd
+LE --> UC_email
 
 ST --> UC_public
+ST --> UC_pubdl
 
 UC_gen ..> UC_conf : <<extend>>
 UC_pub ..> UC_notif : <<include>>
+UC_pubdl ..> UC_public : <<extend>>
+
+note bottom of UC_pubdl : Published runs only — no account required
 
 @enduml

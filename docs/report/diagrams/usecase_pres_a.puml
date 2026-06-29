@@ -19,13 +19,14 @@ rectangle "Setup & Administration" {
   usecase "Manage buildings & rooms" as UC_bld
   usecase "Manage users (bulk import)" as UC_users
   usecase "Manage semesters & time slots" as UC_sem
-  usecase "Manage academic structure\n(faculties, depts, levels, classes)" as UC_struct
+  usecase "Manage academic structure\n(faculties, depts, levels, classes, groups)" as UC_struct
   usecase "Manage courses" as UC_course
 
   usecase "Maintain faculty academic data" as UC_facdata
   usecase "Assign lecturers to courses" as UC_assign
   usecase "Review timetable section" as UC_review
   usecase "Approve / reject section" as UC_approve
+  usecase "View analytics\n(role-scoped)" as UC_analytics
 
   usecase "Log in" as UC_login
 }
@@ -39,12 +40,14 @@ UA --> UC_users
 UA --> UC_sem
 UA --> UC_struct
 UA --> UC_course
+UA --> UC_analytics
 UA --> UC_login
 
 FH --> UC_facdata
 FH --> UC_assign
 FH --> UC_review
 FH --> UC_approve
+FH --> UC_analytics
 FH --> UC_login
 
 UC_users ..> UC_login : <<include>>
