@@ -28,4 +28,4 @@ Perron, L., & Furnon, V. (2024). *OR-Tools* (Version 9.15) [Computer software]. 
 
 Schaerf, A. (1999). A survey of automated timetabling. *Artificial Intelligence Review, 13*(2), 87-127.
 
-Wren, A. (1996). Scheduling, timetabling and rostering — A special relationship? In E. K. Burke & P. Ross (Eds.), *Practice and Theory of Automated Timetabling (PATAT 1995)*, Lecture Notes in Computer Science (Vol. 1153, pp. 46-75). Springer.
+Wren, A. (1996). Scheduling, timetabling and rostering: A special relationship? In E. K. Burke & P. Ross (Eds.), *Practice and Theory of Automated Timetabling (PATAT 1995)*, Lecture Notes in Computer Science (Vol. 1153, pp. 46-75). Springer.
