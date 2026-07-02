@@ -68,7 +68,7 @@ The system was not built top to bottom in one pass. As Section 3.2 explained, it
 
 ### 4.3.1 Project Organisation
 
-The code is divided into two independent projects, a `backend` and a `frontend`, that meet only at the REST interface. Within the backend, responsibilities are kept in separate packages: the `models` define the data, the `schemas` define the shapes of requests and responses, the `routers` handle incoming calls, the `core` holds cross-cutting concerns such as authentication and access control, and the `solver` holds the scheduling engine, deliberately set apart from everything that knows about the database or the web. This division is not cosmetic; it is what allows the scheduling engine to be tested in isolation and the rest of the system to be reasoned about a piece at a time.
+The code is divided into two independent projects, a `backend` and a `frontend`, that meet only at the REST interface. Within the backend, responsibilities are kept in separate packages: the `models` define the data, the `schemas` define the shapes of requests and responses, the `routers` handle incoming calls, the `core` holds cross-cutting concerns such as authentication and access control, and the `solver` holds the scheduling engine, deliberately set apart from everything that knows about the database or the web. This division is not cosmetic; it lets the scheduling engine be tested in isolation and the rest of the system be reasoned about a piece at a time.
 
 ### 4.3.2 The Data Layer
 
@@ -186,7 +186,7 @@ The system is now judged against what it was built to do: the specific objective
 
 ### 4.5.1 Correctness
 
-Correctness was the foremost requirement, and it is the clearest result. The output of the case-study run was checked, session by session, against the hard rules: across all 185 placements there were **no lecturer double-bookings, no class double-bookings, and no room double-bookings**, every session sat in a room of the type its course required, and no session fell in a period a lecturer had declared unavailable. This is not a fortunate outcome of one run but a property of the method: as Section 3.6 argued, the solver cannot return an assignment that breaks a hard constraint, because such assignments are excluded from its search by construction. Set against the manual process of the problem statement, where a planner cannot hold every constraint in mind at once and clashes typically surface only after the semester has begun, this is the central improvement the work offers.
+Correctness was the foremost requirement, and it is the clearest result. The output of the case-study run was checked, session by session, against the hard rules: across all 185 placements there were **no lecturer double-bookings, no class double-bookings, and no room double-bookings**, every session sat in a room of the type its course required, and no session fell in a period a lecturer had declared unavailable. That result does not depend on luck in a single run; it follows from the method, because, as Section 3.6 argued, the solver cannot return an assignment that breaks a hard constraint, such assignments being excluded from its search by construction. Set against the manual process of the problem statement, where a planner cannot hold every constraint in mind at once and clashes typically surface only after the semester has begun, this is the central improvement the work offers.
 
 ### 4.5.2 Use of scarce rooms
 

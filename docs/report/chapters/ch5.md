@@ -26,7 +26,7 @@ For the University of Buea and institutions like it, the recommendation is that 
 
 For anyone deploying the system beyond a demonstration, the strongest recommendation is to add verified, email-backed account provisioning before real users are onboarded, as Section 5.5 describes; until then, accounts rest on admin-entered addresses that are not proven to belong to the people they name.
 
-For future developers, the recommendation is to preserve the separation that this work was careful to maintain, keeping the scheduling core independent of the database and the web and joined to the rest of the system only by plain data structures, because it is what allowed the engine to be tested and improved in isolation, and it is what would allow the solver to be extended, or even replaced, without disturbing the system around it.
+For future developers, the recommendation is to preserve the separation that this work was careful to maintain, keeping the scheduling core independent of the database and the web and joined to the rest of the system only by plain data structures, because it allowed the engine to be tested and improved in isolation, and it would let the solver be extended, or even replaced, without disturbing the system around it.
 
 ## 5.4 Difficulties Encountered
 
