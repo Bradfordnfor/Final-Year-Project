@@ -9,7 +9,7 @@
 
 ## Cover / Title page (identity)
 
-- **Institution:** Republic of Cameroon — University of Buea
+- **Institution:** Republic of Cameroon, University of Buea
 - **Faculty:** Faculty of Engineering and Technology
 - **Department:** Department of Computer Engineering
 - **Title:** Design and Implementation of an Automated Timetable Generation and Management System for Universities
@@ -29,23 +29,23 @@ This is to certify that this dissertation, entitled **"Design and Implementation
 <br>
 
 _______________________________  
-**NFOR RINGDAH BRADFORD** (Candidate) — Date: ____________
+**NFOR RINGDAH BRADFORD** (Candidate)   Date: ____________
 
 <br>
 
 _______________________________  
-**Dr. Nde Nguti** (Supervisor) — Date: ____________
+**Dr. Nde Nguti** (Supervisor)   Date: ____________
 
 <br>
 
 _______________________________  
-**Head of Department**, Computer Engineering — Date: ____________
+**Head of Department**, Computer Engineering   Date: ____________
 
 ---
 
 ## Dedication
 
-> *Optional, ≤ 3 honourees — personalise before submission.*
+> *Optional, up to 3 honourees. Personalise before submission.*
 
 To my family, for their constant support and encouragement throughout my studies.
 
@@ -59,13 +59,15 @@ I owe particular thanks to my supervisor, **Dr. Nde Nguti**, whose guidance, pat
 
 Finally, I thank my family and friends for their unfailing support, and my classmates for the discussions and encouragement that accompanied this work.
 
-> *Personalise — add specific names you wish to acknowledge before submission.*
+> *Personalise: add specific names you wish to acknowledge before submission.*
 
 ---
 
 ## Abstract
 
-The construction and management of academic timetables at the University of Buea is, as at many institutions, a manual undertaking: a few staff reconcile the competing demands of courses, lecturers, classes, and rooms by hand, without a tool to enforce the scheduling rules or to warn them when one is broken. The result is slow to produce and prone to clashes that surface only after teaching has begun, is not formally coordinated among the people accountable for it, and is difficult to distribute to the students who must follow it. This work designs and implements an automated system that addresses these weaknesses across the full lifecycle of a timetable. The academic structure of a university — its faculties, departments, levels, classes, courses, lecturers, buildings, rooms, and time periods — is captured in a single relational model that serves as the foundation for scheduling. University timetabling is formulated as a constraint optimisation problem and solved with Google OR-Tools' CP-SAT solver, which enforces the hard scheduling constraints by construction — no lecturer, class, or room is double-booked, every session occupies a room of the type it requires, and lecturer unavailability is respected — while an objective minimises wasted room capacity so that the large and shared sessions are given the larger halls. Around the generator the system places a role-based workflow in which a timetable officer generates and submits a draft, each faculty head approves the portion concerning their faculty, and only an approved timetable is published; exceptions such as oversubscribed laboratories and last-minute moves are handled through conflict resolution and clash-checked manual edits. The published timetable is delivered to students through a public view that needs no account and filters down to a single class. The system was implemented as a FastAPI service with a Flutter client and evaluated on the real first-semester data of the Faculty of Engineering and Technology, where it produced a provably optimal, entirely clash-free timetable of 185 sessions across 89 courses, 13 classes, and 45 lecturers in about thirty-two seconds — against a manual process measured in days. The evaluation shows that the system meets each of its objectives and offers, over the manual process it replaces, correctness by construction, generation in seconds, and a recorded chain of accountability.
+At the University of Buea, as at many institutions, academic timetables are still built and managed by hand. A few staff reconcile the competing demands of courses, lecturers, classes and rooms without any tool to enforce the scheduling rules or to warn them when a rule is broken. The result is slow to produce, prone to clashes that surface only once teaching has begun, not formally coordinated among the people responsible for it, and hard to distribute to the students who must follow it. This work designs and implements an automated system that answers these weaknesses across the whole life of a timetable. It first captures the academic structure of a university, from faculties and departments down to levels, classes, courses, lecturers, buildings, rooms and time periods, in a single relational model that scheduling can build on. University timetabling is then formulated as a constraint optimisation problem and solved with Google OR-Tools' CP-SAT solver. The solver satisfies the hard constraints by construction: no lecturer, class or room is double-booked, every session is given a room of the type it needs, and lecturer unavailability is respected. On top of these rules, an objective minimises wasted seats, so that the large and shared sessions are placed in the larger halls.
+
+Around the generator sits a role-based workflow. A timetable officer generates and submits a draft, each faculty head approves the part that concerns their faculty, and only an approved timetable is published. Exceptions such as oversubscribed laboratories or a last-minute move are handled through conflict resolution and clash-checked manual edits, and students reach the published timetable through a public view that needs no account and narrows to a single class. The system was built as a FastAPI service with a Flutter client and evaluated on the real first-semester data of the Faculty of Engineering and Technology. There it produced a provably optimal, entirely clash-free timetable of 185 sessions across 89 courses, 13 classes and 45 lecturers in about thirty-two seconds, where the manual process is measured in days. The evaluation shows that the system meets each of its objectives, and that against the manual process it replaces it offers correctness by construction, generation in seconds, and a recorded chain of accountability.
 
 **Keywords:** university timetabling, constraint programming, CP-SAT, automated scheduling, approval workflow, FastAPI, Flutter.
 
@@ -77,15 +79,15 @@ The construction and management of academic timetables at the University of Buea
 |---|---|
 | API | Application Programming Interface |
 | B.Eng. | Bachelor of Engineering |
-| CP-SAT | Constraint Programming – Satisfiability (Google OR-Tools solver) |
+| CP-SAT | Constraint Programming - Satisfiability (Google OR-Tools solver) |
 | CSV | Comma-Separated Values |
-| ER | Entity–Relationship |
+| ER | Entity-Relationship |
 | FET | Faculty of Engineering and Technology |
 | HOD | Head of Department |
 | JWT | JSON Web Token |
 | NP | Nondeterministic Polynomial (time) |
 | OR-Tools | Operations Research Tools (Google) |
-| ORM | Object–Relational Mapping |
+| ORM | Object-Relational Mapping |
 | PDF | Portable Document Format |
 | RBAC | Role-Based Access Control |
 | REST | Representational State Transfer |
