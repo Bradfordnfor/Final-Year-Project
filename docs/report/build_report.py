@@ -269,7 +269,7 @@ def add_toc_field(doc, instr, placeholder):
 
 def collect_captions(label: str) -> list[str]:
     found = []
-    pat = re.compile(rf">\s*\*\*({label} [\d.]+)\*\*\s*[—-]\s*(.+)")
+    pat = re.compile(rf">\s*\*\*({label} [\d.]+)\*\*\s*[—:-]\s*(.+)")
     for ch in CHAPTERS:
         for line in ch.read_text(encoding="utf-8").splitlines():
             m = pat.match(line.strip())
