@@ -1,13 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.course import Course, SharedCourse
-from app.models.user import User
+from app.models.user import User, Lecturer
+from app.models.university import Faculty, Department
+from app.models.academic import Level
 from app.schemas.course import (
     CourseCreate, CourseUpdate, CourseOut,
     SharedCourseCreate, SharedCourseOut,
 )
 from app.core.permissions import get_current_user, require_timetable_officer
+from app.services.course_import import read_rows, match_lecturer, parse_int
+
+ALLOWED_ROOM_TYPES = {"lecture_hall", "lab", "studio"}
 
 router = APIRouter(tags=["Courses"])
 
@@ -141,3 +147,172 @@ def remove_shared_course(
                             detail="Shared course relationship not found")
     db.delete(obj)
     db.commit()
+
+
+@router.post("/courses/bulk-import/")
+def bulk_import_courses(
+    file: UploadFile = File(...),
+    dry_run: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk-create courses from a CSV or Excel (.xlsx) file.
+
+    The caller's role selects the mode. A faculty head imports departmental
+    courses (semester 1 or 2) into their own faculty; a university admin imports
+    year-long university-wide requirements (semester 0). Every row is
+    independent: a bad row is skipped with a reason rather than aborting the
+    batch. With ``dry_run=true`` the same breakdown is returned but nothing is
+    written (this drives the preview the user confirms).
+    """
+    if current_user.role not in ("faculty_head", "university_admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Only faculty heads and university admins can bulk-import courses.",
+        )
+
+    content = file.file.read()
+    try:
+        header, rows = read_rows(file.filename or "", content)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="That file could not be read. Please upload a CSV or Excel "
+                   "(.xlsx) file.",
+        )
+
+    if current_user.role == "faculty_head":
+        return _import_faculty_courses(db, current_user, header, rows, dry_run)
+    return _import_university_courses(db, current_user, header, rows, dry_run)
+
+
+def _normalize_room_type(raw) -> str:
+    room_type = (raw or "").strip().lower()
+    return room_type if room_type in ALLOWED_ROOM_TYPES else "lecture_hall"
+
+
+def _import_faculty_courses(db, user, header, rows, dry_run):
+    required = {"code", "name", "level", "department"}
+    if not required.issubset(set(header)):
+        raise HTTPException(
+            status_code=400,
+            detail="File must contain columns: code, name, level, department "
+                   "(semester, weekly_hours, room_type, lecturer are optional).",
+        )
+
+    depts = db.query(Department).filter(Department.faculty_id == user.faculty_id).all()
+    dept_by_name = {d.name.strip().lower(): d for d in depts}
+    dept_ids = [d.id for d in depts]
+
+    levels = (
+        db.query(Level).filter(Level.department_id.in_(dept_ids)).all()
+        if dept_ids else []
+    )
+    level_by_key = {(l.department_id, l.number): l for l in levels}
+
+    # Lecturers of these departments, grouped by department for scoped matching.
+    candidates_by_dept: dict[int, list[tuple[int, str]]] = {}
+    if dept_ids:
+        lect_rows = (
+            db.query(Lecturer, User)
+            .join(User, Lecturer.user_id == User.id)
+            .filter(Lecturer.department_id.in_(dept_ids))
+            .all()
+        )
+        for lect, u in lect_rows:
+            candidates_by_dept.setdefault(lect.department_id, []).append(
+                (lect.id, u.full_name)
+            )
+
+    created, skipped, seen = [], [], set()
+
+    for row in rows:
+        code = (row.get("code") or "").strip()
+        name = (row.get("name") or "").strip()
+        level_raw = (row.get("level") or "").strip()
+        dept_name = (row.get("department") or "").strip()
+
+        if not (code and name and level_raw and dept_name):
+            skipped.append({"code": code or "(missing)", "reason": "missing required field"})
+            continue
+
+        dept = dept_by_name.get(dept_name.lower())
+        if not dept:
+            skipped.append({"code": code,
+                            "reason": f"department '{dept_name}' not found in your faculty"})
+            continue
+
+        try:
+            level_num = int(float(level_raw))
+        except (ValueError, TypeError):
+            skipped.append({"code": code, "reason": f"level '{level_raw}' is not a number"})
+            continue
+
+        level = level_by_key.get((dept.id, level_num))
+        if not level:
+            skipped.append({"code": code,
+                            "reason": f"level {level_num} not found in department '{dept.name}'"})
+            continue
+
+        sem_raw = (row.get("semester") or "").strip()
+        if not sem_raw:
+            semester = 1
+        else:
+            try:
+                semester = int(float(sem_raw))
+            except (ValueError, TypeError):
+                skipped.append({"code": code, "reason": f"semester '{sem_raw}' is not a number"})
+                continue
+        if semester == 0:
+            skipped.append({"code": code,
+                            "reason": "year-long courses are added by the university admin, not here"})
+            continue
+        if semester not in (1, 2):
+            skipped.append({"code": code, "reason": f"semester {semester} must be 1 or 2"})
+            continue
+
+        weekly_hours = parse_int(row.get("weekly_hours"), 2)
+        room_type = _normalize_room_type(row.get("room_type"))
+
+        key = (dept.id, level.id, code.lower())
+        if key in seen:
+            skipped.append({"code": code, "reason": "duplicate row in file"})
+            continue
+        exists = (
+            db.query(Course)
+            .filter(Course.department_id == dept.id,
+                    Course.level_id == level.id,
+                    func.lower(Course.code) == code.lower())
+            .first()
+        )
+        if exists:
+            skipped.append({"code": code, "reason": "already exists"})
+            continue
+        seen.add(key)
+
+        lecturer_raw = (row.get("lecturer") or "").strip()
+        lect_id, lect_note = match_lecturer(lecturer_raw, candidates_by_dept.get(dept.id, []))
+
+        entry = {
+            "code": code, "name": name, "level": level_num,
+            "department": dept.name, "semester": semester,
+            "lecturer": lecturer_raw or None, "lecturer_note": lect_note,
+        }
+
+        if not dry_run:
+            db.add(Course(
+                code=code, name=name, room_type_required=room_type,
+                level_id=level.id, department_id=dept.id, university_id=None,
+                lecturer_id=lect_id, weekly_hours=weekly_hours, semester=semester,
+            ))
+        created.append(entry)
+
+    if dry_run:
+        db.rollback()
+    else:
+        db.commit()
+    return {"created": created, "skipped": skipped, "dry_run": dry_run}
+
+
+def _import_university_courses(db, user, header, rows, dry_run):
+    raise HTTPException(status_code=501, detail="Not implemented yet")
