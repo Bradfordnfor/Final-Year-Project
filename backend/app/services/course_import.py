@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 from typing import Optional
 
 
@@ -83,3 +84,35 @@ def _read_xlsx(content: bytes) -> tuple[list[str], list[dict]]:
             row[key] = _normalize_cell(cells[i]) if i < len(cells) else ""
         rows.append(row)
     return header, rows
+
+
+_TITLES = {"dr", "prof", "professor", "mr", "mrs", "ms", "miss", "engr", "rev"}
+
+
+def normalize_name(raw: Optional[str]) -> str:
+    """Lower-case a person name, drop leading honorifics, collapse whitespace."""
+    if not raw:
+        return ""
+    text = str(raw).strip().lower().replace(".", " ")
+    tokens = [t for t in re.split(r"\s+", text) if t]
+    while tokens and tokens[0] in _TITLES:
+        tokens.pop(0)
+    return " ".join(tokens)
+
+
+def match_lecturer(raw_name, candidates: list[tuple[int, str]]):
+    """Resolve a free-text lecturer name to a lecturer id.
+
+    Returns (lecturer_id, None) on a single clean match; (None, None) when no
+    name was supplied; (None, note) when the name is unmatched or ambiguous.
+    A messy or missing name never raises - it just leaves the course unassigned.
+    """
+    target = normalize_name(raw_name)
+    if not target:
+        return None, None
+    matches = [cid for cid, full in candidates if normalize_name(full) == target]
+    if len(matches) == 1:
+        return matches[0], None
+    if not matches:
+        return None, "not found - assign manually"
+    return None, "ambiguous - assign manually"
