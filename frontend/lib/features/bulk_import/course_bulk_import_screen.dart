@@ -282,7 +282,7 @@ class _CourseBulkImportScreenState extends State<CourseBulkImportScreen> {
                             name: m['name'] as String? ?? '',
                             subtitle: [
                               if (m['level'] != null) 'L${m['level']}',
-                              'S${m['semester']}',
+                              (m['semester'] == 0 ? 'Year-long' : 'S${m['semester']}'),
                               if (m['department'] != null) m['department'] as String,
                             ].join('  ·  '),
                             lecturer: lecturer,
@@ -348,7 +348,8 @@ class _CourseBulkImportScreenState extends State<CourseBulkImportScreen> {
                     name: m['name'] as String? ?? '',
                     subtitle: [
                       if (m['level'] != null) 'L${m['level']}',
-                      'S${m['semester']}',
+                      (m['semester'] == 0 ? 'Year-long' : 'S${m['semester']}'),
+                      if (m['department'] != null) m['department'] as String,
                     ].join('  ·  '),
                     lecturer: m['lecturer'] as String?,
                     note: m['lecturer_note'] as String?,
