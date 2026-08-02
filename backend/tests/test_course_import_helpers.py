@@ -36,6 +36,21 @@ def test_read_rows_xlsx():
     assert rows[0] == {"code": "CEF440", "name": "Internet Programming", "level": "400"}
 
 
+def test_read_rows_csv_skips_blank_rows():
+    content = b"code,name\nCEF440,Internet\n,,\nCEF441,Networks\n"
+    header, rows = read_rows("c.csv", content)
+    assert header == ["code", "name"]
+    assert len(rows) == 2
+    assert rows[0]["code"] == "CEF440"
+    assert rows[1]["code"] == "CEF441"
+
+
+def test_read_rows_csv_undecodable_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        read_rows("x.csv", b"\xff\xfe\x00bad")
+
+
 def test_read_rows_xlsx_skips_blank_rows():
     content = _xlsx_bytes([["code", "name"], [None, None], ["CEF440", "Internet"]])
     _, rows = read_rows("c.xlsx", content)

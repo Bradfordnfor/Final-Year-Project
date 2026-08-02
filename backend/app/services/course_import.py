@@ -45,10 +45,13 @@ def _read_csv(content: bytes) -> tuple[list[str], list[dict]]:
     header = [(_normalize_cell(h)).lower() for h in (reader.fieldnames or [])]
     rows = []
     for raw in reader:
-        rows.append({
+        row = {
             (_normalize_cell(k)).lower(): _normalize_cell(v)
             for k, v in raw.items() if k is not None
-        })
+        }
+        if all(value == "" for value in row.values()):
+            continue
+        rows.append(row)
     return header, rows
 
 
