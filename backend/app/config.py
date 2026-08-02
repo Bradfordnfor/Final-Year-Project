@@ -8,6 +8,17 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
+    # Email delivery (absence of smtp_host selects the console backend)
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str = "no-reply@timetabling.local"
+    smtp_use_tls: bool = True
+    app_base_url: str = "http://localhost:8080"
+    activation_token_days: int = 7
+    email_change_token_hours: int = 24
+
     class Config:
         env_file = ".env"
 
