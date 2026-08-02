@@ -10,6 +10,7 @@ import '../features/management/management_screen.dart';
 import '../features/notifications/notifications_screen.dart';
 import '../features/public_timetable/public_timetable_screen.dart';
 import '../features/bulk_import/bulk_import_screen.dart';
+import '../features/bulk_import/course_bulk_import_screen.dart';
 import '../features/timetable/timetable_screen.dart';
 import '../features/universities/universities_screen.dart';
 import 'widgets/app_shell.dart';
@@ -26,6 +27,7 @@ class AppRoutes {
   static const facultySetup = '/faculty-setup';
   static const publicTimetable = '/public';
   static const bulkImport = '/bulk-import';
+  static const courseBulkImport = '/course-bulk-import';
   static const universities = '/universities';
 
   static final pages = [
@@ -40,6 +42,7 @@ class AppRoutes {
     GetPage(name: facultySetup, page: () => const AppShell(child: FacultySetupScreen())),
     GetPage(name: publicTimetable, page: () => const PublicTimetableScreen()),
     GetPage(name: bulkImport, page: () => const AppShell(child: BulkImportScreen())),
+    GetPage(name: courseBulkImport, page: () => const AppShell(child: CourseBulkImportScreen())),
     GetPage(name: universities, page: () => const AppShell(child: UniversitiesScreen())),
   ];
 }

@@ -67,6 +67,13 @@ class AppShell extends StatelessWidget {
       visible: (u) => u.canManageUniversity,
     ),
     _Dest(
+      icon: Icons.library_books_outlined, activeIcon: Icons.library_books,
+      label: 'Import Courses', route: AppRoutes.courseBulkImport,
+      // Only the two roles the endpoint accepts. canManageUniversity is
+      // university_admin (not super_admin); plus faculty heads.
+      visible: (u) => u.canManageUniversity || u.isFacultyHead,
+    ),
+    _Dest(
       icon: Icons.public_outlined, activeIcon: Icons.public,
       label: 'Public View', route: AppRoutes.publicTimetable,
       visible: (u) => !u.isSuperAdmin,
