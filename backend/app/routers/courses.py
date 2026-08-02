@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.course import Course, SharedCourse
 from app.models.user import User, Lecturer
-from app.models.university import Faculty, Department
+from app.models.university import Department
 from app.models.academic import Level
 from app.schemas.course import (
     CourseCreate, CourseUpdate, CourseOut,
@@ -315,4 +315,67 @@ def _import_faculty_courses(db, user, header, rows, dry_run):
 
 
 def _import_university_courses(db, user, header, rows, dry_run):
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    required = {"code", "name"}
+    if not required.issubset(set(header)):
+        raise HTTPException(
+            status_code=400,
+            detail="File must contain columns: code, name "
+                   "(weekly_hours, room_type, lecturer are optional).",
+        )
+
+    lect_rows = (
+        db.query(Lecturer, User)
+        .join(User, Lecturer.user_id == User.id)
+        .filter(User.university_id == user.university_id)
+        .all()
+    )
+    candidates = [(lect.id, u.full_name) for lect, u in lect_rows]
+
+    created, skipped, seen = [], [], set()
+
+    for row in rows:
+        code = (row.get("code") or "").strip()
+        name = (row.get("name") or "").strip()
+        if not (code and name):
+            skipped.append({"code": code or "(missing)", "reason": "missing required field"})
+            continue
+
+        weekly_hours = parse_int(row.get("weekly_hours"), 2)
+        room_type = _normalize_room_type(row.get("room_type"))
+
+        if code.lower() in seen:
+            skipped.append({"code": code, "reason": "duplicate row in file"})
+            continue
+        exists = (
+            db.query(Course)
+            .filter(Course.university_id == user.university_id,
+                    Course.department_id.is_(None),
+                    func.lower(Course.code) == code.lower())
+            .first()
+        )
+        if exists:
+            skipped.append({"code": code, "reason": "already exists"})
+            continue
+        seen.add(code.lower())
+
+        lecturer_raw = (row.get("lecturer") or "").strip()
+        lect_id, lect_note = match_lecturer(lecturer_raw, candidates)
+
+        entry = {
+            "code": code, "name": name, "semester": 0,
+            "lecturer": lecturer_raw or None, "lecturer_note": lect_note,
+        }
+        if not dry_run:
+            db.add(Course(
+                code=code, name=name, room_type_required=room_type,
+                level_id=None, department_id=None,
+                university_id=user.university_id,
+                lecturer_id=lect_id, weekly_hours=weekly_hours, semester=0,
+            ))
+        created.append(entry)
+
+    if dry_run:
+        db.rollback()
+    else:
+        db.commit()
+    return {"created": created, "skipped": skipped, "dry_run": dry_run}

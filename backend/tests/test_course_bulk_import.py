@@ -136,3 +136,60 @@ def test_bulk_import_rejects_unreadable_file(client, auth_headers):
     )
     assert r.status_code == 400
     assert "CSV or Excel" in r.json()["detail"]
+
+
+def test_faculty_head_missing_required_column(client, auth_headers):
+    ctx = setup_faculty_head(client, auth_headers)
+    csv_text = "code,name,department\nCEF440,Internet Programming,Computer Engineering\n"  # no level
+    r = _upload(client, ctx["headers"], csv_text)
+    assert r.status_code == 400
+    assert "code, name, level, department" in r.json()["detail"]
+
+
+def test_bulk_import_forbidden_for_timetable_officer(client, auth_headers):
+    uni = make_university(client, auth_headers)
+    client.post("/users/", json={
+        "email": "officer@test.com", "password": "password123",
+        "full_name": "Officer One", "role": "timetable_officer",
+        "university_id": uni["id"],
+    }, headers=auth_headers)
+    token = _login(client, "officer@test.com")
+    r = _upload(client, _headers(token),
+                "code,name,level,department\nCEF440,X,400,Computer Engineering\n")
+    assert r.status_code == 403
+
+
+def _login_admin(client, auth_headers):
+    """make_university creates a university admin admin_<slug>@test.com. Log in."""
+    uni = make_university(client, auth_headers)
+    token = _login(client, "admin_ub@test.com")
+    return uni, _headers(token)
+
+
+def test_university_admin_imports_year_long_courses(client, auth_headers):
+    uni, admin_headers = _login_admin(client, auth_headers)
+    csv_text = "code,name\nUB101,Use of English\nUB102,Civics\n"
+    r = _upload(client, admin_headers, csv_text)
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["created"]) == 2
+    assert all(c["semester"] == 0 for c in body["created"])
+    listed = client.get(f"/courses/?university_id={uni['id']}", headers=admin_headers).json()
+    assert {c["code"] for c in listed} == {"UB101", "UB102"}
+    assert all(c["department_id"] is None and c["semester"] == 0 for c in listed)
+
+
+def test_university_admin_skips_duplicate(client, auth_headers):
+    uni, admin_headers = _login_admin(client, auth_headers)
+    csv_text = "code,name\nUB101,Use of English\n"
+    _upload(client, admin_headers, csv_text)
+    r = _upload(client, admin_headers, csv_text)
+    assert r.json()["created"] == []
+    assert r.json()["skipped"][0]["reason"] == "already exists"
+
+
+def test_university_admin_missing_columns(client, auth_headers):
+    _, admin_headers = _login_admin(client, auth_headers)
+    r = _upload(client, admin_headers, "code\nUB101\n")   # no name column
+    assert r.status_code == 400
+    assert "code, name" in r.json()["detail"]
