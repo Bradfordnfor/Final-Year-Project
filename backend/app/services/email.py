@@ -26,7 +26,7 @@ class SmtpEmailSender:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
             if settings.smtp_use_tls:
                 server.starttls()
-            if settings.smtp_username:
+            if settings.smtp_username and settings.smtp_password:
                 server.login(settings.smtp_username, settings.smtp_password)
             server.send_message(msg)
 
@@ -40,27 +40,29 @@ def get_email_sender():
 
 def build_activation_email(link: str) -> tuple[str, str, str]:
     subject = "Activate your timetabling account"
+    days = settings.activation_token_days
     text = (
         "Welcome. To activate your account and set your password, open this link:\n"
-        f"{link}\n\nThe link expires in 7 days."
+        f"{link}\n\nThe link expires in {days} days."
     )
     html = (
         "<p>Welcome. To activate your account and set your password, "
         f'click <a href="{link}">this link</a>.</p>'
-        "<p>The link expires in 7 days.</p>"
+        f"<p>The link expires in {days} days.</p>"
     )
     return subject, html, text
 
 
 def build_email_change_email(link: str) -> tuple[str, str, str]:
     subject = "Confirm your new email address"
+    hours = settings.email_change_token_hours
     text = (
         "Confirm this as your new email address by opening this link:\n"
-        f"{link}\n\nThe link expires in 24 hours. If you did not request this, ignore it."
+        f"{link}\n\nThe link expires in {hours} hours. If you did not request this, ignore it."
     )
     html = (
         "<p>Confirm this as your new email address by clicking "
         f'<a href="{link}">this link</a>.</p>'
-        "<p>The link expires in 24 hours. If you did not request this, ignore it.</p>"
+        f"<p>The link expires in {hours} hours. If you did not request this, ignore it.</p>"
     )
     return subject, html, text
