@@ -1,6 +1,6 @@
 import io
 from openpyxl import Workbook
-from app.services.course_import import read_rows, parse_int
+from app.services.course_import import read_rows, parse_int, normalize_name, match_lecturer
 
 
 def _xlsx_bytes(rows):
@@ -77,9 +77,6 @@ def test_parse_int():
     assert parse_int(None, 2) == 2
     assert parse_int("abc", 2) == 2
     assert parse_int(4, 2) == 4
-
-
-from app.services.course_import import normalize_name, match_lecturer
 
 
 def test_normalize_name_strips_titles_and_case():

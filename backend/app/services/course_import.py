@@ -40,7 +40,7 @@ def read_rows(filename: str, content: bytes) -> tuple[list[str], list[dict]]:
 def _read_csv(content: bytes) -> tuple[list[str], list[dict]]:
     try:
         text = content.decode("utf-8-sig")
-    except (UnicodeDecodeError, ValueError):
+    except UnicodeDecodeError:
         raise ValueError("file is not decodable text")
     reader = csv.DictReader(io.StringIO(text))
     header = [(_normalize_cell(h)).lower() for h in (reader.fieldnames or [])]
