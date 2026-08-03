@@ -8,7 +8,6 @@ def test_create_university(client, auth_headers):
         "overflow_threshold": 0.20,
         "admin_full_name": "UB Admin",
         "admin_email": "admin_ub@test.com",
-        "admin_password": "password123",
     }, headers=auth_headers)
     assert response.status_code == 201
     data = response.json()

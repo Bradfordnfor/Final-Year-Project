@@ -79,7 +79,7 @@ def test_submit_for_review_requires_a_faculty_head(client, auth_headers):
 
     # Assign a head, then submission advances the run to under_review
     client.post("/users/", json={
-        "email": "fhead@ub.cm", "password": "pass123",
+        "email": "fhead@ub.cm",
         "full_name": "FET Head", "role": "faculty_head", "faculty_id": fac["id"],
     }, headers=auth_headers)
     ok = client.post(f"/runs/{run['id']}/submit-for-review", headers=auth_headers)

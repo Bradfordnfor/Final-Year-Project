@@ -119,7 +119,6 @@ def make_university(client, auth_headers, name="UB", slug="ub"):
         "slug": slug,
         "admin_full_name": f"{slug.upper()} Admin",
         "admin_email": f"admin_{slug}@test.com",
-        "admin_password": "password123",
     }, headers=auth_headers).json()
     activate_user(f"admin_{slug}@test.com")
     return resp

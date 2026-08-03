@@ -235,7 +235,7 @@ def _make_faculty(db):
 
 def test_faculty_head_requires_a_faculty(client, auth_headers, db):
     resp = client.post("/users/", json={
-        "email": "head_nofac@ub.cm", "password": "pass123",
+        "email": "head_nofac@ub.cm",
         "full_name": "No Faculty Head", "role": "faculty_head",
     }, headers=auth_headers)
     assert resp.status_code == 400
@@ -244,7 +244,7 @@ def test_faculty_head_requires_a_faculty(client, auth_headers, db):
 def test_faculty_head_created_with_faculty(client, auth_headers, db):
     fac = _make_faculty(db)
     resp = client.post("/users/", json={
-        "email": "head_cot@ub.cm", "password": "pass123",
+        "email": "head_cot@ub.cm",
         "full_name": "COT Head", "role": "faculty_head", "faculty_id": fac.id,
     }, headers=auth_headers)
     assert resp.status_code == 201
@@ -254,11 +254,11 @@ def test_faculty_head_created_with_faculty(client, auth_headers, db):
 def test_second_head_for_same_faculty_rejected(client, auth_headers, db):
     fac = _make_faculty(db)
     client.post("/users/", json={
-        "email": "head1@ub.cm", "password": "pass123",
+        "email": "head1@ub.cm",
         "full_name": "Head One", "role": "faculty_head", "faculty_id": fac.id,
     }, headers=auth_headers)
     resp = client.post("/users/", json={
-        "email": "head2@ub.cm", "password": "pass123",
+        "email": "head2@ub.cm",
         "full_name": "Head Two", "role": "faculty_head", "faculty_id": fac.id,
     }, headers=auth_headers)
     assert resp.status_code == 400

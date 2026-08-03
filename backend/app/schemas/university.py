@@ -16,7 +16,6 @@ class UniversityWithAdminCreate(BaseModel):
     # First admin account
     admin_full_name: str
     admin_email: str
-    admin_password: str
 
 
 class UniversityOut(BaseModel):
@@ -36,6 +35,7 @@ class UniversityCreateResponse(BaseModel):
     admin_id: int
     admin_email: str
     admin_full_name: str
+    admin_activation_link: str
 
 
 class FacultyCreate(BaseModel):

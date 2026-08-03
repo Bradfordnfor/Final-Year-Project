@@ -1,6 +1,8 @@
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
+from app.config import settings
 from app.models.university import University, Faculty, Department
 from app.models.academic import Level, Class, ClassGroup, Semester, TimeSlot
 from app.models.building import Building
@@ -18,6 +20,8 @@ from app.schemas.university import (
 )
 from app.core.permissions import get_current_user, require_super_admin
 from app.core.security import get_password_hash
+from app.services.email import get_email_sender
+from app.routers.auth import send_activation
 
 router = APIRouter(prefix="/universities", tags=["Universities"])
 
@@ -198,6 +202,7 @@ def create_university(
     payload: UniversityWithAdminCreate,
     db: Session = Depends(get_db),
     _=Depends(require_super_admin),
+    sender=Depends(get_email_sender),
 ):
     if db.query(University).filter(University.slug == payload.slug).first():
         raise HTTPException(status_code=400, detail="A university with that slug already exists")
@@ -215,17 +220,21 @@ def create_university(
     admin = User(
         email=payload.admin_email,
         full_name=payload.admin_full_name,
-        hashed_password=get_password_hash(payload.admin_password),
+        hashed_password=get_password_hash(secrets.token_urlsafe(16)),
         role="university_admin",
         university_id=university.id,
         is_active=True,
+        is_verified=False,
     )
     db.add(admin)
     db.flush()
-
     db.commit()
     db.refresh(university)
     db.refresh(admin)
+
+    raw = send_activation(db, sender, admin)
+    db.commit()
+    link = f"{settings.app_base_url}/activate?token={raw}"
 
     return UniversityCreateResponse(
         id=university.id,
@@ -235,6 +244,7 @@ def create_university(
         admin_id=admin.id,
         admin_email=admin.email,
         admin_full_name=admin.full_name,
+        admin_activation_link=link,
     )
 
 

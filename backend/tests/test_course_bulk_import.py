@@ -38,7 +38,7 @@ def setup_faculty_head(client, auth_headers, level_number=400):
     client.post("/levels/", json={"number": level_number, "department_id": dept["id"]},
                 headers=auth_headers)
     client.post("/users/", json={
-        "email": "head@test.com", "password": "password123",
+        "email": "head@test.com",
         "full_name": "Head One", "role": "faculty_head",
         "university_id": uni["id"], "faculty_id": fac["id"],
     }, headers=auth_headers)
@@ -161,7 +161,7 @@ def test_faculty_head_missing_required_column(client, auth_headers):
 def test_bulk_import_forbidden_for_timetable_officer(client, auth_headers):
     uni = make_university(client, auth_headers)
     client.post("/users/", json={
-        "email": "officer@test.com", "password": "password123",
+        "email": "officer@test.com",
         "full_name": "Officer One", "role": "timetable_officer",
         "university_id": uni["id"],
     }, headers=auth_headers)
@@ -214,7 +214,7 @@ def _create_lecturer(client, auth_headers, uni, dept, fac, email, full_name):
     Returns the created lecturer dict (has "id").
     """
     user = client.post("/users/", json={
-        "email": email, "password": "password123",
+        "email": email,
         "full_name": full_name, "role": "lecturer",
         "university_id": uni["id"], "department_id": dept["id"], "faculty_id": fac["id"],
     }, headers=auth_headers).json()

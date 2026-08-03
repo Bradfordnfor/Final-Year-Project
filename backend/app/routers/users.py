@@ -13,6 +13,8 @@ from app.schemas.user import (
 )
 from app.core.security import get_password_hash
 from app.core.permissions import get_current_user, require_super_admin, require_university_admin, require_timetable_officer
+from app.services.email import get_email_sender
+from app.routers.auth import send_activation
 
 router = APIRouter(tags=["Users"])
 
@@ -22,6 +24,7 @@ def create_user(
     payload: UserCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    sender=Depends(get_email_sender),
 ):
     if current_user.role not in ("super_admin", "university_admin"):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
@@ -44,11 +47,16 @@ def create_user(
                 detail="This faculty already has an active head.",
             )
     data = payload.model_dump()
-    password = data.pop("password")
-    user = User(**data, hashed_password=get_password_hash(password))
+    user = User(
+        **data,
+        hashed_password=get_password_hash(secrets.token_urlsafe(16)),
+        is_verified=False,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
+    send_activation(db, sender, user)
+    db.commit()
     return user
 
 
@@ -229,19 +237,23 @@ def bulk_import_lecturers(
     dry_run: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    sender=Depends(get_email_sender),
 ):
     """Bulk-create lecturer accounts from a human-readable CSV.
 
-    Columns: name, email, faculty, department, password (password optional).
-    Faculty and department are matched by name (case-insensitive) within the
-    importing admin's own university — no IDs needed. Each row is independent:
-    a bad row is skipped with a reason rather than aborting the whole import.
+    Columns: name, email, faculty, department. Faculty and department are
+    matched by name (case-insensitive) within the importing admin's own
+    university — no IDs needed. Each row is independent: a bad row is skipped
+    with a reason rather than aborting the whole import.
+
+    Every created lecturer account is pending: it has no usable password and
+    gets an activation invitation emailed to it, the same as any other
+    account-creation path.
 
     With ``dry_run=true`` the file is validated and the same created/skipped
-    breakdown is returned, but nothing is written. This drives the preview the
-    admin reviews before confirming or cancelling. Rows whose password is blank
-    are flagged ``will_generate_password`` (the password itself is only minted on
-    the real commit). The response always carries the ``dry_run`` flag back.
+    breakdown is returned, but nothing is written and no emails are sent. This
+    drives the preview the admin reviews before confirming or cancelling. The
+    response always carries the ``dry_run`` flag back.
     """
     from app.models.university import Faculty, Department
 
@@ -255,11 +267,26 @@ def bulk_import_lecturers(
         )
     university_id = current_user.university_id
 
-    content = file.file.read().decode("utf-8-sig")
+    # A spreadsheet saved as .xlsx, an image, or any non-text upload is not
+    # decodable — answer with a clear message instead of a 500.
+    try:
+        content = file.file.read().decode("utf-8-sig")
+    except (UnicodeDecodeError, ValueError):
+        raise HTTPException(
+            status_code=400,
+            detail="That file could not be read as CSV text. Please upload a "
+                   "plain CSV file (in your spreadsheet, choose Save As / Export "
+                   "→ CSV).",
+        )
+
     reader = csv.DictReader(io.StringIO(content))
+    try:
+        header = reader.fieldnames or []
+    except csv.Error:
+        header = []
 
     required_cols = {"name", "email", "faculty", "department"}
-    if not required_cols.issubset(set(reader.fieldnames or [])):
+    if not required_cols.issubset(set(header)):
         raise HTTPException(
             status_code=400,
             detail="CSV must contain columns: name, email, faculty, department "
@@ -288,7 +315,6 @@ def bulk_import_lecturers(
         email = (row.get("email") or "").strip()
         faculty_name = (row.get("faculty") or "").strip()
         department_name = (row.get("department") or "").strip()
-        password = (row.get("password") or "").strip()
 
         if not (name and email and faculty_name and department_name):
             skipped.append({"email": email or "(missing)",
@@ -318,26 +344,21 @@ def bulk_import_lecturers(
             continue
         seen_emails.add(email.lower())
 
-        generated = not password
-
         # Preview only describes what would happen — no account is minted.
         if dry_run:
             created.append({
                 "name": name, "email": email,
                 "faculty": faculty.name, "department": dept.name,
-                "will_generate_password": generated,
             })
             continue
-
-        if generated:
-            password = secrets.token_urlsafe(8)
 
         user = User(
             email=email,
             full_name=name,
-            hashed_password=get_password_hash(password),
+            hashed_password=get_password_hash(secrets.token_urlsafe(16)),
             role="lecturer",
             is_active=True,
+            is_verified=False,
             university_id=university_id,
             faculty_id=faculty.id,
             department_id=dept.id,
@@ -345,11 +366,9 @@ def bulk_import_lecturers(
         db.add(user)
         db.flush()
         db.add(Lecturer(user_id=user.id, department_id=dept.id))
+        send_activation(db, sender, user)
 
-        entry = {"name": name, "email": email}
-        if generated:
-            entry["temp_password"] = password
-        created.append(entry)
+        created.append({"name": name, "email": email})
 
     if dry_run:
         db.rollback()      # belt-and-braces: a preview must persist nothing

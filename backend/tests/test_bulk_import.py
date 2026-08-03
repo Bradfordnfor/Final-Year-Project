@@ -1,13 +1,14 @@
-"""Redesigned lecturer bulk import: name/email/faculty/department/password CSV.
+"""Redesigned lecturer bulk import: name/email/faculty/department CSV.
 
 Faculty and department are matched by name within the importing admin's own
-university; password is optional (generated when blank); bad rows are skipped
-with a reason instead of aborting or crashing.
+university; every created account is pending (no password) and gets an
+activation invitation emailed to it; bad rows are skipped with a reason
+instead of aborting or crashing.
 """
 from app.models.university import University, Faculty, Department
 from app.models.user import User, Lecturer
 from app.core.security import get_password_hash
-from tests.conftest import activate_user, verify_only
+from tests.conftest import activate_user
 
 
 def _setup_admin(db, client, *, with_university=True):
@@ -40,38 +41,33 @@ def _post_csv(client, headers, text, dry_run=False):
     )
 
 
-def test_import_creates_with_generated_and_supplied_passwords(client, db):
+def test_import_creates_pending_lecturers_and_sends_invites(client, db, sent_emails):
     _uni, headers = _setup_admin(db, client)
     csv_text = (
-        "name,email,faculty,department,password\n"
-        "John Doe,jdoe@ub.cm,Faculty of Engineering and Technology,Computer Engineering,\n"
+        "name,email,faculty,department\n"
+        "John Doe,jdoe@ub.cm,Faculty of Engineering and Technology,Computer Engineering\n"
         # second row uses different casing to prove case-insensitive matching
-        "Jane Smith,jsmith@ub.cm,faculty of engineering and technology,electrical engineering,Start123\n"
+        "Jane Smith,jsmith@ub.cm,faculty of engineering and technology,electrical engineering\n"
     )
     resp = _post_csv(client, headers, csv_text)
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["created"]) == 2
     assert body["skipped"] == []
+    assert all("temp_password" not in c for c in body["created"])
 
-    john = next(c for c in body["created"] if c["email"] == "jdoe@ub.cm")
-    jane = next(c for c in body["created"] if c["email"] == "jsmith@ub.cm")
-    assert "temp_password" in john          # blank -> generated and returned
-    assert "temp_password" not in jane      # supplied -> not echoed
-
-    # Both accounts exist as lecturers with a profile
+    # Both accounts exist as lecturers with a profile, pending activation
     for email in ("jdoe@ub.cm", "jsmith@ub.cm"):
         user = db.query(User).filter(User.email == email).first()
         assert user is not None and user.role == "lecturer"
+        assert user.is_verified is False
         assert db.query(Lecturer).filter(Lecturer.user_id == user.id).first()
+        assert any(m["to"] == email for m in sent_emails)
 
-    # Jane can log in with the password from the file. verify_only() marks her
-    # verified without resetting the password, so this login genuinely tests
-    # that the importer persisted the CSV-supplied password "Start123".
-    verify_only("jsmith@ub.cm")
+    # cannot log in until activated
     login = client.post("/auth/login", json={
-        "email": "jsmith@ub.cm", "password": "Start123"})
-    assert login.status_code == 200
+        "email": "jsmith@ub.cm", "password": "whatever"})
+    assert login.status_code in (401, 403)
 
 
 def test_import_skips_unknown_faculty_and_department(client, db):
@@ -134,9 +130,9 @@ def test_import_unreadable_file_is_friendly_400(client, db):
 def test_preview_validates_without_creating_anyone(client, db):
     _uni, headers = _setup_admin(db, client)
     csv_text = (
-        "name,email,faculty,department,password\n"
-        "John Doe,jdoe@ub.cm,Faculty of Engineering and Technology,Computer Engineering,\n"
-        "Bad Dept,bd@ub.cm,Faculty of Engineering and Technology,Astronomy,\n"
+        "name,email,faculty,department\n"
+        "John Doe,jdoe@ub.cm,Faculty of Engineering and Technology,Computer Engineering\n"
+        "Bad Dept,bd@ub.cm,Faculty of Engineering and Technology,Astronomy\n"
     )
     body = _post_csv(client, headers, csv_text, dry_run=True).json()
     assert body["dry_run"] is True
@@ -144,8 +140,7 @@ def test_preview_validates_without_creating_anyone(client, db):
     assert len(body["created"]) == 1
     john = body["created"][0]
     assert john["email"] == "jdoe@ub.cm"
-    assert john["will_generate_password"] is True   # blank password in file
-    assert "temp_password" not in john              # not generated during preview
+    assert "temp_password" not in john              # nothing is minted during preview
     assert len(body["skipped"]) == 1
     assert db.query(User).filter(User.email == "jdoe@ub.cm").first() is None
 
@@ -153,8 +148,8 @@ def test_preview_validates_without_creating_anyone(client, db):
 def test_preview_then_commit_creates_accounts(client, db):
     _uni, headers = _setup_admin(db, client)
     csv_text = (
-        "name,email,faculty,department,password\n"
-        "John Doe,jdoe@ub.cm,Faculty of Engineering and Technology,Computer Engineering,\n"
+        "name,email,faculty,department\n"
+        "John Doe,jdoe@ub.cm,Faculty of Engineering and Technology,Computer Engineering\n"
     )
     _post_csv(client, headers, csv_text, dry_run=True)
     assert db.query(User).filter(User.email == "jdoe@ub.cm").first() is None  # preview wrote nothing
@@ -162,8 +157,10 @@ def test_preview_then_commit_creates_accounts(client, db):
     body = _post_csv(client, headers, csv_text).json()                       # real commit
     assert body["dry_run"] is False
     assert len(body["created"]) == 1
-    assert "temp_password" in body["created"][0]
-    assert db.query(User).filter(User.email == "jdoe@ub.cm").first() is not None
+    assert "temp_password" not in body["created"][0]
+    created_user = db.query(User).filter(User.email == "jdoe@ub.cm").first()
+    assert created_user is not None
+    assert created_user.is_verified is False
 
 
 def test_preview_flags_duplicate_rows_within_the_file(client, db):
