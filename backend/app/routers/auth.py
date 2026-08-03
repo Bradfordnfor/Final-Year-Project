@@ -1,3 +1,4 @@
+from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -6,6 +7,11 @@ from app.models.user import User
 from app.core.security import verify_password, get_password_hash
 from app.core.auth import create_access_token
 from app.core.permissions import get_current_user
+from app.config import settings
+from app.services.verification import issue_token, verify_token
+from app.services.email import (
+    get_email_sender, build_activation_email, build_email_change_email,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -111,3 +117,64 @@ def change_email(
     db.commit()
     db.refresh(current_user)
     return UserOut.model_validate(current_user)
+
+
+def send_activation(db: Session, sender, user: User) -> str:
+    """Issue an activation token for `user`, email the link, and return the raw
+    token. Email failures are logged, not raised, so account creation is robust.
+    Returns the raw token so callers (e.g. university bootstrap) can surface the
+    link directly."""
+    raw = issue_token(db, user.id, "activation",
+                      timedelta(days=settings.activation_token_days))
+    link = f"{settings.app_base_url}/activate?token={raw}"
+    subject, html, text = build_activation_email(link)
+    try:
+        sender.send(user.email, subject, html, text)
+    except Exception:  # pragma: no cover - delivery failures must not strand accounts
+        import logging
+        logging.getLogger("email").exception("activation email send failed for %s", user.email)
+    return raw
+
+
+class ActivateRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/activate", response_model=TokenResponse)
+def activate(payload: ActivateRequest, db: Session = Depends(get_db)):
+    if len(payload.new_password) < 6:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="New password must be at least 6 characters")
+    row = verify_token(db, payload.token, "activation")
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="This activation link is invalid or has expired. Request a new one.")
+    user = db.get(User, row.user_id)
+    if user is None:
+        db.delete(row); db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="This activation link is invalid or has expired. Request a new one.")
+    user.hashed_password = get_password_hash(payload.new_password)
+    user.is_verified = True
+    user.is_active = True
+    db.delete(row)
+    db.commit()
+    db.refresh(user)
+    token = create_access_token({"sub": str(user.id)})
+    return TokenResponse(access_token=token, user=UserOut.model_validate(user))
+
+
+class ResendActivationRequest(BaseModel):
+    email: str
+
+
+@router.post("/resend-activation")
+def resend_activation(payload: ResendActivationRequest, db: Session = Depends(get_db),
+                      sender=Depends(get_email_sender)):
+    user = db.query(User).filter(User.email == payload.email.strip()).first()
+    if user and not user.is_verified:
+        send_activation(db, sender, user)
+        db.commit()
+    # Always generic: do not reveal whether the account exists.
+    return {"ok": True}
