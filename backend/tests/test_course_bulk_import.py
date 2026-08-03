@@ -1,6 +1,6 @@
 import io
 from openpyxl import Workbook
-from tests.conftest import make_university
+from tests.conftest import make_university, activate_user
 
 
 def _xlsx_bytes(rows):
@@ -42,6 +42,7 @@ def setup_faculty_head(client, auth_headers, level_number=400):
         "full_name": "Head One", "role": "faculty_head",
         "university_id": uni["id"], "faculty_id": fac["id"],
     }, headers=auth_headers)
+    activate_user("head@test.com")
     token = _login(client, "head@test.com")
     return {"uni": uni, "fac": fac, "dept": dept, "headers": _headers(token)}
 
@@ -164,6 +165,7 @@ def test_bulk_import_forbidden_for_timetable_officer(client, auth_headers):
         "full_name": "Officer One", "role": "timetable_officer",
         "university_id": uni["id"],
     }, headers=auth_headers)
+    activate_user("officer@test.com")
     token = _login(client, "officer@test.com")
     r = _upload(client, _headers(token),
                 "code,name,level,department\nCEF440,X,400,Computer Engineering\n")

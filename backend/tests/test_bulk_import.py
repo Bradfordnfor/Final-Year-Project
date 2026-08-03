@@ -7,6 +7,7 @@ with a reason instead of aborting or crashing.
 from app.models.university import University, Faculty, Department
 from app.models.user import User, Lecturer
 from app.core.security import get_password_hash
+from tests.conftest import activate_user
 
 
 def _setup_admin(db, client, *, with_university=True):
@@ -24,6 +25,7 @@ def _setup_admin(db, client, *, with_university=True):
         university_id=uni.id if with_university else None,
     ))
     db.commit()
+    activate_user("ua@ub.cm", password="pass123")
     token = client.post("/auth/login", json={
         "email": "ua@ub.cm", "password": "pass123"}).json()["access_token"]
     return uni, {"Authorization": f"Bearer {token}"}
@@ -64,6 +66,7 @@ def test_import_creates_with_generated_and_supplied_passwords(client, db):
         assert db.query(Lecturer).filter(Lecturer.user_id == user.id).first()
 
     # Jane can log in with the password from the file
+    activate_user("jsmith@ub.cm", password="Start123")
     login = client.post("/auth/login", json={
         "email": "jsmith@ub.cm", "password": "Start123"})
     assert login.status_code == 200
@@ -108,6 +111,20 @@ def test_import_missing_columns_is_400(client, db):
     _uni, headers = _setup_admin(db, client)
     resp = _post_csv(client, headers, "name,email\nX,x@ub.cm\n")
     assert resp.status_code == 400
+
+
+def test_import_unreadable_file_is_friendly_400(client, db):
+    """A binary / non-UTF-8 upload returns a clear 400, not a 500 exception."""
+    _uni, headers = _setup_admin(db, client)
+    resp = client.post(
+        "/users/bulk-import/",
+        files={"file": ("staff.xlsx",
+                        b"PK\x03\x04\x14\x00\x00\x00\x08\x00\xff\xfe\x00bad",
+                        "text/csv")},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+    assert "csv" in resp.json()["detail"].lower()
 
 
 # ─── Preview (dry-run) before committing ──────────────────────────────────────

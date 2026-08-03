@@ -4,7 +4,7 @@ Regression: these endpoints required require_faculty_head, which excludes the
 timetable_officer role, so the officer got 403 on the analytics page and when
 resolving a conflict.
 """
-from tests.conftest import make_university
+from tests.conftest import make_university, activate_user
 from app.models.user import User
 from app.models.timetable import TimetableConflict
 from app.core.security import get_password_hash
@@ -17,6 +17,7 @@ def _officer_headers(client, db, university_id):
         university_id=university_id,
     ))
     db.commit()
+    activate_user("officer@test.com", password="pass123")
     resp = client.post("/auth/login", json={
         "email": "officer@test.com", "password": "pass123"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
@@ -91,6 +92,7 @@ def test_faculty_head_analytics_scoped_to_their_faculty(client, auth_headers, db
                 full_name="Head A", role="faculty_head", is_active=True,
                 university_id=uni.id, faculty_id=fac_a.id))
     db.commit()
+    activate_user("head_a@test.com", password="pass123")
 
     login = client.post("/auth/login", json={
         "email": "head_a@test.com", "password": "pass123"})

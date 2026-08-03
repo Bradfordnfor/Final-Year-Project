@@ -53,6 +53,7 @@ def admin_user(db):
         full_name="Test Admin",
         role="super_admin",
         is_active=True,
+        is_verified=True,
     )
     db.add(user)
     db.commit()
@@ -74,6 +75,20 @@ def auth_headers(admin_token):
     return {"Authorization": f"Bearer {admin_token}"}
 
 
+def activate_user(email, password="password123"):
+    """Test helper: mark an account verified and give it a known password, so a
+    test that created it via the API can then log in."""
+    dbs = TestingSessionLocal()
+    try:
+        u = dbs.query(User).filter(User.email == email).first()
+        if u:
+            u.is_verified = True
+            u.hashed_password = get_password_hash(password)
+            dbs.commit()
+    finally:
+        dbs.close()
+
+
 def make_university(client, auth_headers, name="UB", slug="ub"):
     """Create a university (and its first admin) via the current API and return the JSON.
 
@@ -81,10 +96,28 @@ def make_university(client, auth_headers, name="UB", slug="ub"):
     admin_* fields. The admin email is derived from the slug to stay unique when
     a single test creates more than one university.
     """
-    return client.post("/universities/", json={
+    resp = client.post("/universities/", json={
         "name": name,
         "slug": slug,
         "admin_full_name": f"{slug.upper()} Admin",
         "admin_email": f"admin_{slug}@test.com",
         "admin_password": "password123",
     }, headers=auth_headers).json()
+    activate_user(f"admin_{slug}@test.com")
+    return resp
+
+
+@pytest.fixture
+def sent_emails():
+    """Capture emails instead of sending. Yields a list of dicts:
+    {to, subject, html, text}."""
+    from app.services.email import get_email_sender
+    box = []
+
+    class _Capture:
+        def send(self, to, subject, html, text):
+            box.append({"to": to, "subject": subject, "html": html, "text": text})
+
+    app.dependency_overrides[get_email_sender] = lambda: _Capture()
+    yield box
+    app.dependency_overrides.pop(get_email_sender, None)

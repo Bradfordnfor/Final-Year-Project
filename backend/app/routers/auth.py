@@ -44,6 +44,11 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         )
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account inactive")
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. Check your inbox or request a new activation link.",
+        )
     token = create_access_token({"sub": str(user.id)})
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 

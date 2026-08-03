@@ -14,6 +14,7 @@ from app.models.user import User, Lecturer
 from app.models.timetable import TimetableRun, TimetableRunFaculty, TimetableRunBuilding
 from app.core.security import get_password_hash
 from app.solver.readiness import check_run_readiness, is_ready
+from tests.conftest import activate_user
 
 
 def _failed_keys(items):
@@ -287,6 +288,7 @@ def test_faculty_head_only_sees_runs_for_their_faculty(client, db, admin_user):
                 full_name="Scoped Head", role="faculty_head",
                 faculty_id=run_faculty_id, is_active=True)
     db.add(head); db.commit()
+    activate_user("scoped_head@ub.cm", password="pass123")
 
     token = client.post("/auth/login", json={
         "email": "scoped_head@ub.cm", "password": "pass123",

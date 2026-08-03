@@ -14,6 +14,7 @@ from app.models.timetable import (
     TimetableRun, TimetableRunFaculty, TimetableEntry, TimetableEntryClass,
 )
 from app.core.security import get_password_hash
+from tests.conftest import activate_user
 
 
 def _setup(db):
@@ -73,6 +74,7 @@ def _setup(db):
     db.add(run); db.flush()
     db.add(TimetableRunFaculty(run_id=run.id, faculty_id=fac.id))
     db.commit()
+    activate_user("off@test.com", password="pass123")
 
     return {
         "run": run.id, "course": course.id, "lec": lec.id,

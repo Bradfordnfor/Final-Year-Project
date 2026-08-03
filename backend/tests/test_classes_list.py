@@ -4,6 +4,7 @@ from app.models.university import University, Faculty, Department
 from app.models.academic import Level, Class
 from app.models.user import User
 from app.core.security import get_password_hash
+from tests.conftest import activate_user
 
 
 def test_classes_endpoint_returns_name_and_population(client, db, admin_user):
@@ -22,6 +23,7 @@ def test_classes_endpoint_returns_name_and_population(client, db, admin_user):
                 full_name="Officer", role="timetable_officer",
                 is_active=True, university_id=uni.id))
     db.commit()
+    activate_user("off2@test.com", password="pass123")
 
     token = client.post("/auth/login", json={
         "email": "off2@test.com", "password": "pass123"}).json()["access_token"]

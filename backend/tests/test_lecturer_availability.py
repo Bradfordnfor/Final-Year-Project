@@ -8,6 +8,7 @@ from app.models.university import University, Faculty, Department
 from app.models.academic import Semester, TimeSlot
 from app.models.user import User, Lecturer
 from app.core.security import get_password_hash
+from tests.conftest import activate_user
 
 
 def _make_lecturer_user(db, email="lect@test.com"):
@@ -28,6 +29,7 @@ def _make_lecturer_user(db, email="lect@test.com"):
                 full_name="Dr Lect", role="lecturer", is_active=True,
                 department_id=dept.id)
     db.add(user); db.commit(); db.refresh(user); db.refresh(slot)
+    activate_user(email, password="pass123")
     return user, slot, dept
 
 

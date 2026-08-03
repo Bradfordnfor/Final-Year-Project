@@ -9,6 +9,7 @@ from app.models.academic import Semester
 from app.models.timetable import TimetableRun, TimetableRunFaculty
 from app.models.user import User
 from app.core.security import get_password_hash
+from tests.conftest import activate_user
 
 
 def _make_world(db, creator_id):
@@ -33,6 +34,7 @@ def _headers(client, db, email, role, **kw):
     db.add(User(email=email, hashed_password=get_password_hash("pass123"),
                 full_name=role, role=role, is_active=True, **kw))
     db.commit()
+    activate_user(email, password="pass123")
     resp = client.post("/auth/login", json={"email": email, "password": "pass123"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
