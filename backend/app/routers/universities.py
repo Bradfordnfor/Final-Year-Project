@@ -2,7 +2,6 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.config import settings
 from app.models.university import University, Faculty, Department
 from app.models.academic import Level, Class, ClassGroup, Semester, TimeSlot
 from app.models.building import Building
@@ -20,7 +19,7 @@ from app.schemas.university import (
 )
 from app.core.permissions import get_current_user, require_super_admin
 from app.core.security import get_password_hash
-from app.services.email import get_email_sender
+from app.services.email import get_email_sender, activation_link
 from app.routers.auth import send_activation
 
 router = APIRouter(prefix="/universities", tags=["Universities"])
@@ -234,7 +233,7 @@ def create_university(
 
     raw = send_activation(db, sender, admin)
     db.commit()
-    link = f"{settings.app_base_url}/activate?token={raw}"
+    link = activation_link(raw)
 
     return UniversityCreateResponse(
         id=university.id,

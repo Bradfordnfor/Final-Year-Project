@@ -84,12 +84,17 @@ def seed():
                     end_time=end, semester_id=semester.id,
                 ))
 
+        # Seeded accounts are created already verified (bypassing the email
+        # activation flow), so a freshly seeded database is usable right away —
+        # this script uses Base.metadata.create_all, not the Alembic migration
+        # that grandfathers existing rows as verified.
         super_admin = models.User(
             email="superadmin@ub.cm",
             hashed_password=get_password_hash("super123"),
             full_name="Super Admin",
             role="super_admin",
             is_active=True,
+            is_verified=True,
             university_id=None,
         )
         admin = models.User(
@@ -98,6 +103,7 @@ def seed():
             full_name="UB Admin",
             role="university_admin",
             is_active=True,
+            is_verified=True,
             university_id=university.id,
         )
         fet_head = models.User(
@@ -106,6 +112,7 @@ def seed():
             full_name="FET Faculty Head",
             role="faculty_head",
             is_active=True,
+            is_verified=True,
             university_id=university.id,
             faculty_id=faculty.id,
         )
@@ -115,6 +122,7 @@ def seed():
             full_name="Timetable Officer",
             role="timetable_officer",
             is_active=True,
+            is_verified=True,
             university_id=university.id,
             faculty_id=faculty.id,
         )
@@ -124,6 +132,7 @@ def seed():
             full_name="Dr. Test Lecturer",
             role="lecturer",
             is_active=True,
+            is_verified=True,
             university_id=university.id,
             department_id=dept_ee.id,
         )
@@ -133,6 +142,7 @@ def seed():
             full_name="Test Student",
             role="student",
             is_active=True,
+            is_verified=True,
             university_id=university.id,
             department_id=dept_ee.id,
         )

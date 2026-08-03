@@ -80,10 +80,13 @@ def main():
                 rows.append([full_name, email, fac.name, dept.name, "(exists)"])
                 continue
             password = secrets.token_urlsafe(8)
+            # Dev-only bypass of the activation-link flow: this loader hands
+            # out a real password via the credentials CSV instead of emailing
+            # an invitation, so the account is marked verified immediately.
             user = User(
                 email=email, full_name=full_name,
                 hashed_password=get_password_hash(password),
-                role="lecturer", is_active=True,
+                role="lecturer", is_active=True, is_verified=True,
                 university_id=uni.id, faculty_id=fac.id, department_id=dept.id,
             )
             db.add(user)

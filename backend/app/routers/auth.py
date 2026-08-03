@@ -11,6 +11,7 @@ from app.config import settings
 from app.services.verification import issue_token, verify_token
 from app.services.email import (
     get_email_sender, build_activation_email, build_email_change_email,
+    activation_link,
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -157,7 +158,7 @@ def send_activation(db: Session, sender, user: User) -> str:
     link directly."""
     raw = issue_token(db, user.id, "activation",
                       timedelta(days=settings.activation_token_days))
-    link = f"{settings.app_base_url}/activate?token={raw}"
+    link = activation_link(raw)
     subject, html, text = build_activation_email(link)
     try:
         sender.send(user.email, subject, html, text)

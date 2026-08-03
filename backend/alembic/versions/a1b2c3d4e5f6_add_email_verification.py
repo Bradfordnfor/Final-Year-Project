@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column('purpose', sa.String(length=20), nullable=False),
         sa.Column('new_email', sa.String(length=200), nullable=True),
         sa.Column('expires_at', sa.DateTime(), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
+        sa.Column('created_at', sa.DateTime(), nullable=False),
     )
     op.create_index('ix_verification_tokens_token_hash', 'verification_tokens', ['token_hash'])
 

@@ -289,8 +289,7 @@ def bulk_import_lecturers(
     if not required_cols.issubset(set(header)):
         raise HTTPException(
             status_code=400,
-            detail="CSV must contain columns: name, email, faculty, department "
-                   "(password is optional).",
+            detail="CSV must contain columns: name, email, faculty, department.",
         )
 
     # Index this university's faculties and departments by lowercased name.
