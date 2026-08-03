@@ -77,13 +77,31 @@ def auth_headers(admin_token):
 
 def activate_user(email, password="password123"):
     """Test helper: mark an account verified and give it a known password, so a
-    test that created it via the API can then log in."""
+    test that created it via the API can then log in.
+
+    NOTE: this RESETS the account's password. Do not use it when the account's
+    existing password is itself under test (e.g. a bulk import that sets the
+    password) — use verify_only() instead, which leaves the password untouched."""
     dbs = TestingSessionLocal()
     try:
         u = dbs.query(User).filter(User.email == email).first()
         if u:
             u.is_verified = True
             u.hashed_password = get_password_hash(password)
+            dbs.commit()
+    finally:
+        dbs.close()
+
+
+def verify_only(email):
+    """Mark an account verified WITHOUT touching its password. Use when the
+    account's existing password is itself under test (e.g. a bulk import that
+    sets the password), so login still exercises that password."""
+    dbs = TestingSessionLocal()
+    try:
+        u = dbs.query(User).filter(User.email == email).first()
+        if u:
+            u.is_verified = True
             dbs.commit()
     finally:
         dbs.close()

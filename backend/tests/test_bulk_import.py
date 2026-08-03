@@ -7,7 +7,7 @@ with a reason instead of aborting or crashing.
 from app.models.university import University, Faculty, Department
 from app.models.user import User, Lecturer
 from app.core.security import get_password_hash
-from tests.conftest import activate_user
+from tests.conftest import activate_user, verify_only
 
 
 def _setup_admin(db, client, *, with_university=True):
@@ -65,8 +65,10 @@ def test_import_creates_with_generated_and_supplied_passwords(client, db):
         assert user is not None and user.role == "lecturer"
         assert db.query(Lecturer).filter(Lecturer.user_id == user.id).first()
 
-    # Jane can log in with the password from the file
-    activate_user("jsmith@ub.cm", password="Start123")
+    # Jane can log in with the password from the file. verify_only() marks her
+    # verified without resetting the password, so this login genuinely tests
+    # that the importer persisted the CSV-supplied password "Start123".
+    verify_only("jsmith@ub.cm")
     login = client.post("/auth/login", json={
         "email": "jsmith@ub.cm", "password": "Start123"})
     assert login.status_code == 200
