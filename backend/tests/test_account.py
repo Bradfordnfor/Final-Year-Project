@@ -7,9 +7,10 @@ def test_change_email_succeeds(client, auth_headers, db, admin_user):
     resp = client.post("/auth/change-email",
                        json={"email": "newadmin@test.com"}, headers=auth_headers)
     assert resp.status_code == 200
-    assert resp.json()["email"] == "newadmin@test.com"
+    assert resp.json()["pending_email"] == "newadmin@test.com"
+    # Email is not swapped until the confirmation link is used.
     db.expire_all()
-    assert db.get(User, admin_user.id).email == "newadmin@test.com"
+    assert db.get(User, admin_user.id).email == "admin@test.com"
 
 
 def test_change_email_rejects_duplicate(client, auth_headers, db, admin_user):

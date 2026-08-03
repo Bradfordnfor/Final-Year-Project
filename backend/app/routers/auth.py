@@ -94,11 +94,12 @@ class ChangeEmailRequest(BaseModel):
     email: str
 
 
-@router.post("/change-email", response_model=UserOut)
+@router.post("/change-email")
 def change_email(
     payload: ChangeEmailRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    sender=Depends(get_email_sender),
 ):
     new_email = payload.email.strip()
     if "@" not in new_email or "." not in new_email or " " in new_email:
@@ -113,10 +114,40 @@ def change_email(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="That email address is already in use",
         )
-    current_user.email = new_email
+    raw = issue_token(db, current_user.id, "email_change",
+                      timedelta(hours=settings.email_change_token_hours), new_email=new_email)
+    link = f"{settings.app_base_url}/confirm-email?token={raw}"
+    subject, html, text = build_email_change_email(link)
+    try:
+        sender.send(new_email, subject, html, text)
+    except Exception:  # pragma: no cover
+        import logging
+        logging.getLogger("email").exception("email-change send failed for %s", new_email)
     db.commit()
-    db.refresh(current_user)
-    return UserOut.model_validate(current_user)
+    return {"ok": True, "pending_email": new_email}
+
+
+class ConfirmEmailRequest(BaseModel):
+    token: str
+
+
+@router.post("/confirm-email", response_model=UserOut)
+def confirm_email(payload: ConfirmEmailRequest, db: Session = Depends(get_db)):
+    row = verify_token(db, payload.token, "email_change")
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="This confirmation link is invalid or has expired. Request a new one.")
+    user = db.get(User, row.user_id)
+    clash = db.query(User).filter(User.email == row.new_email, User.id != row.user_id).first()
+    if user is None or clash:
+        db.delete(row); db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="That email address is no longer available.")
+    user.email = row.new_email
+    db.delete(row)
+    db.commit()
+    db.refresh(user)
+    return UserOut.model_validate(user)
 
 
 def send_activation(db: Session, sender, user: User) -> str:
