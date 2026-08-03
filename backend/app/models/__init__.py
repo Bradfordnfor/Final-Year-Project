@@ -4,6 +4,7 @@ from app.models.room import Room
 from app.models.academic import Semester, TimeSlot, Level, Class, ClassGroup
 from app.models.user import User, Lecturer, LecturerAvailability, Student
 from app.models.course import Course, SharedCourse
+from app.models.verification import VerificationToken
 from app.models.timetable import (
     TimetableRun, TimetableRunFaculty, TimetableRunBuilding,
     TimetableEntry, TimetableEntryClass,

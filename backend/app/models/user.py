@@ -14,6 +14,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(30))
     # super_admin | university_admin | faculty_head | timetable_officer | lecturer | student
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     university_id: Mapped[Optional[int]] = mapped_column(ForeignKey("universities.id"), nullable=True)
     department_id: Mapped[Optional[int]] = mapped_column(ForeignKey("departments.id"), nullable=True)
     faculty_id: Mapped[Optional[int]] = mapped_column(ForeignKey("faculties.id"), nullable=True)
