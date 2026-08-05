@@ -74,8 +74,15 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
           _preview = null;
         }
       });
+    } on DioException catch (e) {
+      // Surface the backend's friendly message (e.g. wrong columns / not a CSV)
+      // rather than the raw exception text.
+      final data = e.response?.data;
+      final detail = (data is Map) ? data['detail'] as String? : null;
+      setState(() => _error =
+          detail ?? e.message ?? 'Import failed. Please try again.');
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = 'Import failed: $e');
     } finally {
       setState(() => _uploading = false);
     }

@@ -1641,7 +1641,7 @@ class _GeneratingChip extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Text(
-            '$msg this can take up to a minute',
+            '$msg this can take up to 5 minutes as we optimise the timetable',
             style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,

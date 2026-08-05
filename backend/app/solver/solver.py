@@ -1,3 +1,4 @@
+import os
 from collections import defaultdict
 from ortools.sat.python import cp_model
 from app.solver.models import SolverInput, SolverAssignment, SolverResult
@@ -105,7 +106,12 @@ def solve_timetable(solver_input: SolverInput) -> SolverResult:
         model.Minimize(sum(objective_terms))
 
     cp_solver = cp_model.CpSolver()
-    cp_solver.parameters.max_time_in_seconds = 60.0
+    cp_solver.parameters.max_time_in_seconds = 120.0
+    # Search in parallel across all CPU cores. CP-SAT under a wall-clock time
+    # limit is non-deterministic: the same model can solve quickly one run and
+    # time out the next depending on machine load. Using every core makes the
+    # solver far more likely to find a solution we know exists before the limit.
+    cp_solver.parameters.num_search_workers = os.cpu_count() or 8
     status_code = cp_solver.Solve(model)
 
     status_map = {
