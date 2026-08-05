@@ -169,21 +169,48 @@ separate admin enable/disable switch.
 
 ## Frontend (Phase D)
 
-- **Unauthenticated routes:**
-  - `/activate?token=…` → set-password form → on success store the returned
-    token and go to the dashboard (auto-login), or route to login.
-  - `/confirm-email?token=…` → calls confirm, shows success/failure message.
-- **Login screen:** on the not-verified 403, show a "Resend activation email"
-  action that calls `/auth/resend-activation`.
-- **Create-user form:** remove the password field; note "an activation invite
-  will be emailed to this address."
-- **University-creation form (super admin):** remove the admin password field;
-  after creation, display the returned `admin_activation_link` as the bootstrap
-  fallback with a copy button.
-- **Bulk-import lecturers screen:** result shows "Invitations sent to N
-  lecturers" and the skipped list; no passwords.
-- **My Account → change email:** on submit, show "We've sent a confirmation
-  link to <new address>. Your email changes once you confirm."
+Stack: Flutter web + GetX (`GetMaterialApp`, `AppRoutes` in `lib/core/routes.dart`).
+
+**Decisions locked (Phase-D brainstorming):**
+
+- **Hash routing.** The Flutter web app keeps its default hash URL strategy
+  (`/#/…`). The backend link builders are changed to emit the hash form so the
+  emailed links resolve without any web-server rewrite config:
+  `activation_link()` (`services/email.py`) and the inline confirm-email link
+  (`routers/auth.py`) become `{app_base_url}/#/activate?token=…` and
+  `{app_base_url}/#/confirm-email?token=…`. The two backend tests that assert on
+  link format are updated to match.
+- **Auto-login after activation.** `/auth/activate` already returns a
+  `TokenResponse`; the activation screen stores it in `AuthController` (+ secure
+  storage) and routes straight to the dashboard (super-admin → universities), no
+  manual login step.
+
+- **Unauthenticated routes** (added to `AppRoutes`, no `AppShell`, token read via
+  `Get.parameters['token']`):
+  - `/activate?token=…` → set-password form (new + confirm, min 6) → on success
+    auto-login and go to the dashboard; invalid/expired token → friendly error
+    with a "request a new link" hint.
+  - `/confirm-email?token=…` → calls confirm, shows success/failure message with
+    a button back to the app/login.
+- **API layer (`AuthApi`):** add `activate(token, newPassword) → TokenResponse`,
+  `confirmEmail(token)`, `resendActivation(email)`; change `changeEmail` to
+  return `{ ok, pending_email }` (pending confirmation, not an immediate swap).
+- **Login screen:** on the not-verified 403 (`AuthController.login` must detect
+  it distinctly), show a "Resend activation email" action that calls
+  `/auth/resend-activation` and reports the generic "if that account exists…"
+  result.
+- **Create-user form (`management_screen.dart`):** remove the password field and
+  drop `password` from the request body; note "an activation invite will be
+  emailed to this address."
+- **University-creation form (super admin, `universities_screen.dart`):** remove
+  the admin password field and drop `admin_password`; after creation,
+  `_showCreatedConfirmation` displays the returned `admin_activation_link` as the
+  bootstrap fallback with a copy button (instead of a plaintext password).
+- **Bulk-import lecturers screen (`bulk_import_screen.dart`):** result shows
+  "Invitations sent to N lecturers" and the skipped list; no passwords.
+- **My Account → change email (`app_shell.dart`):** on submit, show "We've sent a
+  confirmation link to <new address>. Your email changes once you confirm."
+  (no longer mutates `user.email` immediately).
 
 ## Migration & test impact
 
