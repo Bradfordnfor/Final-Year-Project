@@ -117,7 +117,7 @@ def change_email(
         )
     raw = issue_token(db, current_user.id, "email_change",
                       timedelta(hours=settings.email_change_token_hours), new_email=new_email)
-    link = f"{settings.app_base_url}/confirm-email?token={raw}"
+    link = f"{settings.app_base_url}/#/confirm-email?token={raw}"
     subject, html, text = build_email_change_email(link)
     try:
         sender.send(new_email, subject, html, text)

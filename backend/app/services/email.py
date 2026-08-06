@@ -42,7 +42,7 @@ def activation_link(raw: str) -> str:
     """Build the activation URL for a raw token, so every caller (the
     invitation email and the university-bootstrap response) constructs it the
     same way and cannot drift."""
-    return f"{settings.app_base_url}/activate?token={raw}"
+    return f"{settings.app_base_url}/#/activate?token={raw}"
 
 
 def build_activation_email(link: str) -> tuple[str, str, str]:

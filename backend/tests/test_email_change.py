@@ -11,7 +11,7 @@ def _admin_headers(client, auth_headers):
 
 def _token_from_emails(sent_emails):
     for m in sent_emails:
-        match = re.search(r"/confirm-email\?token=(\S+)", m["text"])
+        match = re.search(r"/#/confirm-email\?token=(\S+)", m["text"])
         if match:
             return match.group(1)
     return None

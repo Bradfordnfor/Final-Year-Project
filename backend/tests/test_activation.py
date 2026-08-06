@@ -66,7 +66,7 @@ def test_resend_activation_sends_email_for_unverified(client, sent_emails):
     assert r.status_code == 200 and r.json()["ok"] is True
     assert any(m["to"] == "resend@test.com" for m in sent_emails)
     # the email carries an activation link with a token
-    assert any(re.search(r"/activate\?token=\S+", m["text"]) for m in sent_emails)
+    assert any(re.search(r"/#/activate\?token=\S+", m["text"]) for m in sent_emails)
 
 
 def test_resend_activation_generic_for_unknown_email(client, sent_emails):
@@ -98,7 +98,7 @@ def test_create_university_returns_admin_activation_link(client, auth_headers, s
         "admin_full_name": "New Admin", "admin_email": "admin_newuni@test.com",
     }, headers=auth_headers)
     assert r.status_code == 201
-    assert "/activate?token=" in r.json()["admin_activation_link"]
+    assert "/#/activate?token=" in r.json()["admin_activation_link"]
 
 
 def test_bulk_import_lecturers_sends_invites_no_passwords(client, auth_headers, sent_emails):
