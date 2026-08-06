@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../core/api/api_client.dart';
@@ -46,9 +47,7 @@ class _UniversitiesScreenState extends State<UniversitiesScreen> {
     final thresholdCtrl = TextEditingController(text: '0.20');
     final adminNameCtrl = TextEditingController();
     final adminEmailCtrl = TextEditingController();
-    final adminPasswordCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
-    bool obscure = true;
     Map<String, dynamic>? createdResult;
 
     final confirmed = await showDialog<bool>(
@@ -113,7 +112,8 @@ class _UniversitiesScreenState extends State<UniversitiesScreen> {
                             ?.copyWith(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
                     Text(
-                      'The university admin will use these credentials to log in.',
+                      'The admin is emailed an activation link to set their own '
+                      'password. No password is created here.',
                       style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
                           color: Theme.of(ctx).colorScheme.outline),
                     ),
@@ -133,23 +133,6 @@ class _UniversitiesScreenState extends State<UniversitiesScreen> {
                       keyboardType: TextInputType.emailAddress,
                       validator: (v) =>
                           v?.trim().isEmpty == true ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: adminPasswordCtrl,
-                      obscureText: obscure,
-                      decoration: InputDecoration(
-                        labelText: 'Admin Password',
-                        suffixIcon: IconButton(
-                          icon: Icon(obscure
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined),
-                          onPressed: () => setS(() => obscure = !obscure),
-                        ),
-                      ),
-                      validator: (v) => (v == null || v.length < 6)
-                          ? 'At least 6 characters'
-                          : null,
                     ),
                   ],
                 ),
@@ -181,11 +164,10 @@ class _UniversitiesScreenState extends State<UniversitiesScreen> {
         'overflow_threshold': double.parse(thresholdCtrl.text.trim()),
         'admin_full_name': adminNameCtrl.text.trim(),
         'admin_email': adminEmailCtrl.text.trim(),
-        'admin_password': adminPasswordCtrl.text.trim(),
       });
       await _load();
       if (mounted) {
-        await _showCreatedConfirmation(createdResult, adminPasswordCtrl.text.trim());
+        await _showCreatedConfirmation(createdResult);
       }
     } catch (e) {
       if (mounted) {
@@ -195,9 +177,10 @@ class _UniversitiesScreenState extends State<UniversitiesScreen> {
     }
   }
 
-  Future<void> _showCreatedConfirmation(Map<String, dynamic>? result, String password) async {
+  Future<void> _showCreatedConfirmation(Map<String, dynamic>? result) async {
     if (result == null) return;
     final email = result['admin_email'] as String;
+    final link = result['admin_activation_link'] as String? ?? '';
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -213,7 +196,7 @@ class _UniversitiesScreenState extends State<UniversitiesScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Share these login details with the university admin:',
+            Text('An activation invite has been emailed to the admin:',
                 style: Theme.of(ctx).textTheme.bodyMedium),
             const SizedBox(height: 12),
             Container(
@@ -230,21 +213,43 @@ class _UniversitiesScreenState extends State<UniversitiesScreen> {
                   Text('Email: $email',
                       style: const TextStyle(fontFamily: 'monospace')),
                   const SizedBox(height: 4),
-                  Text('Password: $password',
-                      style: const TextStyle(fontFamily: 'monospace')),
-                  const SizedBox(height: 4),
                   Text('University: ${result['name']}'),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'The admin can change their password after logging in.',
-              style: Theme.of(ctx)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Theme.of(ctx).colorScheme.outline),
-            ),
+            if (link.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'If email delivery is not configured yet, share this activation '
+                'link with the admin directly:',
+                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(ctx).colorScheme.outline),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: SelectableText(
+                      link,
+                      style: const TextStyle(
+                          fontFamily: 'monospace', fontSize: 12),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    tooltip: 'Copy activation link',
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: link));
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(
+                            content: Text('Activation link copied'),
+                            duration: Duration(seconds: 1)),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
         actions: [
