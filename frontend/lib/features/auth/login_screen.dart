@@ -110,6 +110,20 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         );
                       }),
+                      Obx(() {
+                        if (!AuthController.to.needsActivation.value) {
+                          return const SizedBox.shrink();
+                        }
+                        return Align(
+                          child: TextButton.icon(
+                            icon: const Icon(Icons.mark_email_read_outlined,
+                                size: 18),
+                            label: const Text('Resend activation email'),
+                            onPressed: () =>
+                                AuthController.to.resendActivation(),
+                          ),
+                        );
+                      }),
                       const SizedBox(height: 8),
                       Obx(() {
                         final loading = AuthController.to.isLoading.value;

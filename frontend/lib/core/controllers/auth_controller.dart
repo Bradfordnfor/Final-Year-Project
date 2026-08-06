@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get/get.dart';
 
@@ -15,6 +16,11 @@ class AuthController extends GetxController {
   final Rx<UserModel?> user = Rx<UserModel?>(null);
   final RxBool isLoading = false.obs;
   final RxString errorMessage = ''.obs;
+
+  /// True when the last login attempt failed because the email is unverified,
+  /// so the UI can offer a "resend activation" action.
+  final RxBool needsActivation = false.obs;
+  String _lastLoginEmail = '';
 
   bool get isLoggedIn => user.value != null;
 
@@ -41,14 +47,45 @@ class AuthController extends GetxController {
   Future<void> login(String email, String password) async {
     isLoading.value = true;
     errorMessage.value = '';
+    needsActivation.value = false;
+    _lastLoginEmail = email;
     try {
       final result = await AuthApi(ApiClient()).login(email, password);
       await applyToken(result);
-    } on Exception catch (e) {
-      errorMessage.value = _extractMessage(e);
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      final detail = (e.response?.data as Map?)?['detail'] as String?;
+      if (code == 403) {
+        needsActivation.value = true;
+        errorMessage.value = detail ??
+            'Email not verified. Check your inbox or request a new activation link.';
+      } else if (code == 401) {
+        errorMessage.value = 'Invalid email or password.';
+      } else {
+        errorMessage.value = detail ?? 'An error occurred. Please try again.';
+      }
+    } catch (_) {
+      errorMessage.value = 'Cannot reach server. Check your connection.';
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// Resends the activation email to the last email a login was attempted with.
+  /// Always shows a generic message — never reveals whether the account exists.
+  Future<void> resendActivation() async {
+    if (_lastLoginEmail.isEmpty) return;
+    try {
+      await AuthApi(ApiClient()).resendActivation(_lastLoginEmail);
+    } catch (_) {
+      // Ignore — the generic message below must not leak backend state.
+    }
+    Get.snackbar(
+      'Check your inbox',
+      "If that account exists, we've sent a new activation link.",
+      snackPosition: SnackPosition.BOTTOM,
+      duration: const Duration(seconds: 3),
+    );
   }
 
   /// Stores a successful token/user (from login or activation), persists the
@@ -70,15 +107,4 @@ class AuthController extends GetxController {
   }
 
   String? get token => _token;
-
-  String _extractMessage(Exception e) {
-    final msg = e.toString();
-    if (msg.contains('401') || msg.contains('Unauthorized')) {
-      return 'Invalid email or password.';
-    }
-    if (msg.contains('SocketException') || msg.contains('connection')) {
-      return 'Cannot reach server. Check your connection.';
-    }
-    return 'An error occurred. Please try again.';
-  }
 }
