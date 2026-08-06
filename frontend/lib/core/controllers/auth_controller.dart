@@ -56,7 +56,7 @@ class AuthController extends GetxController {
       final code = e.response?.statusCode;
       final detail = (e.response?.data as Map?)?['detail'] as String?;
       if (code == 403) {
-        needsActivation.value = true;
+        needsActivation.value = detail?.toLowerCase().contains('not verified') ?? false;
         errorMessage.value = detail ??
             'Email not verified. Check your inbox or request a new activation link.';
       } else if (code == 401) {

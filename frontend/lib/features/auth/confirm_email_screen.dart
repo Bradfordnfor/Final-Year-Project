@@ -39,6 +39,7 @@ class _ConfirmEmailScreenState extends State<ConfirmEmailScreen> {
     }
     try {
       await AuthApi(ApiClient()).confirmEmail(token);
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _success = true;
@@ -46,6 +47,7 @@ class _ConfirmEmailScreenState extends State<ConfirmEmailScreen> {
             'Your email address has been updated. You can sign in with it now.';
       });
     } on DioException catch (e) {
+      if (!mounted) return;
       final detail = (e.response?.data as Map?)?['detail'] as String?;
       setState(() {
         _loading = false;
@@ -54,6 +56,7 @@ class _ConfirmEmailScreenState extends State<ConfirmEmailScreen> {
             detail ?? 'This confirmation link is invalid or has expired.';
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _success = false;

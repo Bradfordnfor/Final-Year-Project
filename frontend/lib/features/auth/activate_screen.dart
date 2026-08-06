@@ -48,6 +48,7 @@ class _ActivateScreenState extends State<ActivateScreen> {
       final result = await AuthApi(ApiClient()).activate(token, _pwCtrl.text);
       await AuthController.to.applyToken(result); // auto-login + redirect
     } on DioException catch (e) {
+      if (!mounted) return;
       final detail = (e.response?.data as Map?)?['detail'] as String?;
       setState(() {
         _error = detail ??
@@ -55,6 +56,7 @@ class _ActivateScreenState extends State<ActivateScreen> {
         _submitting = false;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _error = 'Cannot reach the server. Check your connection and try again.';
         _submitting = false;
