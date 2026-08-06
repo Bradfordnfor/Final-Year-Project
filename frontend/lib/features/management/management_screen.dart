@@ -486,7 +486,6 @@ class _UsersTabState extends State<_UsersTab> {
   Future<void> _showAddSheet() async {
     final nameCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
-    final passCtrl = TextEditingController();
     String selectedRole = _roles.first;
     Faculty? selFaculty;
     Department? selDept;
@@ -521,9 +520,29 @@ class _UsersTabState extends State<_UsersTab> {
                     decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
                     keyboardType: TextInputType.emailAddress),
                 const SizedBox(height: 12),
-                TextField(controller: passCtrl,
-                    decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder()),
-                    obscureText: true),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(ctx).colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: Theme.of(ctx).colorScheme.outlineVariant),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.mark_email_read_outlined,
+                          size: 18, color: Theme.of(ctx).colorScheme.primary),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'An activation invite will be emailed to this address. '
+                          'The user sets their own password from the link.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: selectedRole,
@@ -579,7 +598,6 @@ class _UsersTabState extends State<_UsersTab> {
                     final payload = <String, dynamic>{
                       'full_name': nameCtrl.text.trim(),
                       'email': emailCtrl.text.trim(),
-                      'password': passCtrl.text,
                       'role': selectedRole,
                     };
                     // Stamp the creating admin's university on every new user, so
