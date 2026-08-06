@@ -47,10 +47,12 @@ class AuthApi {
     });
   }
 
-  /// Updates the current user's email and returns the refreshed account.
-  Future<UserModel> changeEmail(String email) async {
+  /// Requests an email change. The backend emails a confirmation link to the
+  /// new address and does NOT switch the account email until it is confirmed.
+  /// Returns the pending (new) address for display.
+  Future<String> changeEmail(String email) async {
     final response =
         await _client.post('/auth/change-email', data: {'email': email});
-    return UserModel.fromJson(response.data as Map<String, dynamic>);
+    return (response.data as Map<String, dynamic>)['pending_email'] as String;
   }
 }

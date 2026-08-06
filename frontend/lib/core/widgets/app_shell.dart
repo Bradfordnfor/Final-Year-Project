@@ -613,20 +613,23 @@ Future<void> _showAccountDialog(BuildContext context) async {
                 : () async {
                     setS(() => saving = true);
                     try {
-                      final updated =
+                      final pending =
                           await AuthApi(ApiClient(token: AuthController.to.token))
                               .changeEmail(emailCtrl.text.trim());
-                      AuthController.to.user.value = updated;
                       if (ctx.mounted) {
                         Navigator.pop(ctx);
-                        Get.snackbar('Email updated', '',
-                            snackPosition: SnackPosition.BOTTOM,
-                            duration: const Duration(seconds: 2));
+                        Get.snackbar(
+                          'Confirm your new email',
+                          "We've sent a confirmation link to $pending. "
+                          'Your email changes once you confirm.',
+                          snackPosition: SnackPosition.BOTTOM,
+                          duration: const Duration(seconds: 4),
+                        );
                       }
                     } on DioException catch (e) {
                       final detail = (e.response?.data as Map?)?['detail']
                               as String? ??
-                          'Failed to update email';
+                          'Failed to request email change';
                       setS(() {
                         errorMsg = detail;
                         saving = false;
@@ -645,7 +648,7 @@ Future<void> _showAccountDialog(BuildContext context) async {
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: Colors.white),
                   )
-                : const Text('Save'),
+                : const Text('Send confirmation'),
           ),
         ],
       ),
