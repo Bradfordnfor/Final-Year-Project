@@ -117,7 +117,6 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                       const _CsvFormatRow('email', 'Login email (must be unique)', required: true),
                       const _CsvFormatRow('faculty', 'Faculty name', required: true),
                       const _CsvFormatRow('department', 'Department name', required: true),
-                      const _CsvFormatRow('password', 'Initial password (auto-generated if blank)', required: false),
                       const SizedBox(height: 12),
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -127,9 +126,9 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                           border: Border.all(color: cs.outlineVariant),
                         ),
                         child: Text(
-                          'name,email,faculty,department,password\n'
-                          'John Doe,jdoe@ub.cm,Faculty of Engineering and Technology,Computer Engineering,\n'
-                          'Jane Smith,jsmith@ub.cm,Faculty of Engineering and Technology,Electrical Engineering,Start123',
+                          'name,email,faculty,department\n'
+                          'John Doe,jdoe@ub.cm,Faculty of Engineering and Technology,Computer Engineering\n'
+                          'Jane Smith,jsmith@ub.cm,Faculty of Engineering and Technology,Electrical Engineering',
                           style: TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 12,
@@ -140,8 +139,9 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                       const SizedBox(height: 8),
                       Text(
                         'Lecturers are imported into your university. Faculty and '
-                        'department are matched by name (case-insensitive). Leave '
-                        'the password blank to have one generated and shown once below.',
+                        'department are matched by name (case-insensitive). Each '
+                        'lecturer is emailed an activation invite to set their own '
+                        'password.',
                         style: TextStyle(fontSize: 12, color: cs.outline),
                       ),
                     ],
@@ -281,7 +281,6 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                         const SizedBox(height: 12),
                         ...(_preview!['created'] as List? ?? []).map((item) {
                           final m = item as Map<String, dynamic>;
-                          final willGen = m['will_generate_password'] == true;
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             child: Row(
@@ -304,9 +303,8 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                                     ],
                                   ),
                                 ),
-                                Text(willGen ? 'password auto' : 'from file',
-                                    style: TextStyle(
-                                        fontSize: 10, color: cs.outline)),
+                                const Text('will invite',
+                                    style: TextStyle(fontSize: 10)),
                               ],
                             ),
                           );
@@ -370,21 +368,23 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.errorContainer.withAlpha(60),
+                    color: Theme.of(context).colorScheme.primaryContainer.withAlpha(80),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                        color: Theme.of(context).colorScheme.error.withAlpha(80)),
+                        color: Theme.of(context).colorScheme.primary.withAlpha(80)),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.warning_amber_outlined,
-                          color: Theme.of(context).colorScheme.error, size: 18),
+                      Icon(Icons.mark_email_read_outlined,
+                          color: Theme.of(context).colorScheme.primary, size: 18),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Save these passwords now — they will not be shown again.',
+                          'Invitations sent to ${(_result!['created'] as List?)?.length ?? 0} '
+                          'lecturer${((_result!['created'] as List?)?.length ?? 0) == 1 ? '' : 's'}. '
+                          'Each sets their own password from the emailed link.',
                           style: TextStyle(
-                              color: Theme.of(context).colorScheme.onErrorContainer,
+                              color: Theme.of(context).colorScheme.onPrimaryContainer,
                               fontWeight: FontWeight.w600,
                               fontSize: 13),
                         ),
@@ -394,7 +394,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Created ${(_result!['created'] as List?)?.length ?? 0} accounts  ·  '
+                  'Invited ${(_result!['created'] as List?)?.length ?? 0}  ·  '
                   'Skipped ${(_result!['skipped'] as List?)?.length ?? 0}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.outline),
@@ -402,13 +402,16 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                 const SizedBox(height: 12),
                 ...(_result!['created'] as List? ?? []).map((item) {
                   final m = item as Map<String, dynamic>;
-                  final tempPassword = m['temp_password'] as String?;
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       child: Row(
                         children: [
+                          Icon(Icons.person_add_alt,
+                              size: 18,
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -420,38 +423,13 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                                     style: TextStyle(
                                         color: Theme.of(context).colorScheme.outline,
                                         fontSize: 12)),
-                                if (tempPassword != null) ...[
-                                  const SizedBox(height: 4),
-                                  SelectableText(
-                                    tempPassword,
-                                    style: TextStyle(
-                                        fontFamily: 'monospace',
-                                        fontSize: 13,
-                                        color: Theme.of(context).colorScheme.primary,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                ] else
-                                  Text('password set from file',
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color: Theme.of(context).colorScheme.outline)),
                               ],
                             ),
                           ),
-                          if (tempPassword != null)
-                            IconButton(
-                              icon: const Icon(Icons.copy_outlined, size: 18),
-                              tooltip: 'Copy password',
-                              onPressed: () {
-                                Clipboard.setData(
-                                    ClipboardData(text: tempPassword));
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Password copied'),
-                                      duration: Duration(seconds: 1)),
-                                );
-                              },
-                            ),
+                          Text('invited',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(context).colorScheme.outline)),
                         ],
                       ),
                     ),
