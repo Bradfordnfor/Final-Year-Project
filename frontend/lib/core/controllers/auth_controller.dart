@@ -43,17 +43,23 @@ class AuthController extends GetxController {
     errorMessage.value = '';
     try {
       final result = await AuthApi(ApiClient()).login(email, password);
-      _token = result.accessToken;
-      await _storage.write(key: _tokenKey, value: _token);
-      user.value = result.user;
-      Get.offAllNamed(
-        result.user.isSuperAdmin ? AppRoutes.universities : AppRoutes.dashboard,
-      );
+      await applyToken(result);
     } on Exception catch (e) {
       errorMessage.value = _extractMessage(e);
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// Stores a successful token/user (from login or activation), persists the
+  /// token, and routes to the landing screen for the user's role.
+  Future<void> applyToken(TokenResponse result) async {
+    _token = result.accessToken;
+    await _storage.write(key: _tokenKey, value: _token);
+    user.value = result.user;
+    Get.offAllNamed(
+      result.user.isSuperAdmin ? AppRoutes.universities : AppRoutes.dashboard,
+    );
   }
 
   Future<void> logout() async {

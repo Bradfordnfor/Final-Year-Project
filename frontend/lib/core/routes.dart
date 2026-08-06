@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 
 import '../features/analytics/analytics_screen.dart';
+import '../features/auth/activate_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/conflicts/conflicts_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
@@ -17,6 +18,7 @@ import 'widgets/app_shell.dart';
 
 class AppRoutes {
   static const login = '/login';
+  static const activate = '/activate';
   static const dashboard = '/dashboard';
   static const timetable = '/timetable';
   static const generation = '/generation';
@@ -32,6 +34,7 @@ class AppRoutes {
 
   static final pages = [
     GetPage(name: login, page: () => const LoginScreen()),
+    GetPage(name: activate, page: () => const ActivateScreen()),
     GetPage(name: dashboard, page: () => const AppShell(child: DashboardScreen())),
     GetPage(name: timetable, page: () => const AppShell(child: TimetableScreen())),
     GetPage(name: generation, page: () => const AppShell(child: GenerationScreen())),
