@@ -18,6 +18,28 @@ class AuthApi {
     return UserModel.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// Sets the password for a pending account via an activation token and logs
+  /// the user in. Returns the same token/user shape as `/auth/login`.
+  Future<TokenResponse> activate(String token, String newPassword) async {
+    final response = await _client.post('/auth/activate', data: {
+      'token': token,
+      'new_password': newPassword,
+    });
+    return TokenResponse.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Confirms an email-change token, switching the account to the new address.
+  Future<void> confirmEmail(String token) async {
+    await _client.post('/auth/confirm-email', data: {'token': token});
+  }
+
+  /// Requests a fresh activation email for a pending account. The backend
+  /// always responds generically, so callers must not reveal whether the
+  /// account exists.
+  Future<void> resendActivation(String email) async {
+    await _client.post('/auth/resend-activation', data: {'email': email});
+  }
+
   Future<void> changePassword(String currentPassword, String newPassword) async {
     await _client.post('/auth/change-password', data: {
       'current_password': currentPassword,
