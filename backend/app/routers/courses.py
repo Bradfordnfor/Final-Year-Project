@@ -5,7 +5,7 @@ from app.database import get_db
 from app.models.course import Course, SharedCourse
 from app.models.user import User, Lecturer
 from app.models.university import Department
-from app.models.academic import Level
+from app.models.academic import Level, Class
 from app.schemas.course import (
     CourseCreate, CourseUpdate, CourseOut,
     SharedCourseCreate, SharedCourseOut,
@@ -210,6 +210,16 @@ def _import_faculty_courses(db, user, header, rows, dry_run):
     )
     level_by_key = {(l.department_id, l.number): l for l in levels}
 
+    # Classes at each level, for wiring shared courses to other departments.
+    level_ids = [l.id for l in levels]
+    classes = (
+        db.query(Class).filter(Class.level_id.in_(level_ids)).all()
+        if level_ids else []
+    )
+    classes_by_level: dict[int, list[Class]] = {}
+    for c in classes:
+        classes_by_level.setdefault(c.level_id, []).append(c)
+
     # Lecturers of these departments, grouped by department for scoped matching.
     candidates_by_dept: dict[int, list[tuple[int, str]]] = {}
     if dept_ids:
@@ -230,16 +240,21 @@ def _import_faculty_courses(db, user, header, rows, dry_run):
         code = (row.get("code") or "").strip()
         name = (row.get("name") or "").strip()
         level_raw = (row.get("level") or "").strip()
-        dept_name = (row.get("department") or "").strip()
+        dept_raw = (row.get("department") or "").strip()
 
-        if not (code and name and level_raw and dept_name):
+        if not (code and name and level_raw and dept_raw):
             skipped.append({"code": code or "(missing)", "reason": "missing required field"})
             continue
 
-        dept = dept_by_name.get(dept_name.lower())
+        # First department owns the course; the rest are shared with it.
+        dept_names = [d.strip() for d in dept_raw.split("|") if d.strip()]
+        owner_name = dept_names[0]
+        shared_names = dept_names[1:]
+
+        dept = dept_by_name.get(owner_name.lower())
         if not dept:
             skipped.append({"code": code,
-                            "reason": f"department '{dept_name}' not found in your faculty"})
+                            "reason": f"department '{owner_name}' not found in your faculty"})
             continue
 
         try:
@@ -293,18 +308,49 @@ def _import_faculty_courses(db, user, header, rows, dry_run):
         lecturer_raw = (row.get("lecturer") or "").strip()
         lect_id, lect_note = match_lecturer(lecturer_raw, candidates_by_dept.get(dept.id, []))
 
+        # Resolve shared departments (best-effort; a problem is noted, never fatal).
+        shared_with, shared_problems, shared_class_ids = [], [], []
+        seen_share_ids = set()
+        for sname in shared_names:
+            sdept = dept_by_name.get(sname.lower())
+            if not sdept:
+                shared_problems.append(f"{sname}: department not found in your faculty - not shared")
+                continue
+            if sdept.id == dept.id:
+                continue  # owner listed again; its own classes are already covered
+            slevel = level_by_key.get((sdept.id, level_num))
+            if not slevel:
+                shared_problems.append(f"{sdept.name}: no level {level_num} - not shared")
+                continue
+            sclasses = classes_by_level.get(slevel.id, [])
+            if not sclasses:
+                shared_problems.append(f"{sdept.name}: level {level_num} has no classes - not shared")
+                continue
+            shared_with.append(sdept.name)
+            for c in sclasses:
+                if c.id not in seen_share_ids:
+                    seen_share_ids.add(c.id)
+                    shared_class_ids.append(c.id)
+        shared_note = "; ".join(shared_problems) or None
+
         entry = {
             "code": code, "name": name, "level": level_num,
-            "department": dept.name, "semester": semester,
+            "department": dept.name, "shared_with": shared_with,
+            "semester": semester,
             "lecturer": lecturer_raw or None, "lecturer_note": lect_note,
+            "shared_note": shared_note,
         }
 
         if not dry_run:
-            db.add(Course(
+            course = Course(
                 code=code, name=name, room_type_required=room_type,
                 level_id=level.id, department_id=dept.id, university_id=None,
                 lecturer_id=lect_id, weekly_hours=weekly_hours, semester=semester,
-            ))
+            )
+            db.add(course)
+            db.flush()  # assign course.id before adding shared links
+            for cid in shared_class_ids:
+                db.add(SharedCourse(course_id=course.id, class_id=cid))
         created.append(entry)
 
     if dry_run:

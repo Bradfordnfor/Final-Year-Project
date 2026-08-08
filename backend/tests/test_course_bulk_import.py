@@ -47,6 +47,28 @@ def setup_faculty_head(client, auth_headers, level_number=400):
     return {"uni": uni, "fac": fac, "dept": dept, "headers": _headers(token)}
 
 
+def _add_dept_with_class(client, auth_headers, fac, name, code,
+                         level_number=400, class_name=None, population=100,
+                         with_class=True):
+    """Add a department to `fac` with a Level `level_number` and (optionally) one Class.
+
+    Returns {"dept", "level", "class"} (class is None when with_class=False).
+    """
+    dept = client.post("/departments/", json={
+        "name": name, "code": code, "faculty_id": fac["id"],
+    }, headers=auth_headers).json()
+    level = client.post("/levels/", json={
+        "number": level_number, "department_id": dept["id"],
+    }, headers=auth_headers).json()
+    cls = None
+    if with_class:
+        cls = client.post("/classes/", json={
+            "name": class_name or f"{code}{level_number}",
+            "population": population, "level_id": level["id"],
+        }, headers=auth_headers).json()
+    return {"dept": dept, "level": level, "class": cls}
+
+
 def _upload(client, headers, text, filename="courses.csv", dry_run=False):
     return client.post(
         "/courses/bulk-import/",
@@ -316,3 +338,101 @@ def test_university_admin_dry_run_persists_nothing(client, auth_headers):
     assert len(body["created"]) == 2
     listed = client.get(f"/courses/?university_id={uni['id']}", headers=admin_headers).json()
     assert listed == []
+
+
+def test_shared_course_links_other_department(client, auth_headers):
+    ctx = setup_faculty_head(client, auth_headers)  # owner: Computer Engineering, level 400
+    ee = _add_dept_with_class(client, auth_headers, ctx["fac"],
+                              "Electrical Engineering", "EEF", 400, "EEF400")
+    csv_text = (
+        "code,name,level,department,semester\n"
+        "CEF201,Circuits,400,Computer Engineering | Electrical Engineering,1\n"
+    )
+    r = _upload(client, ctx["headers"], csv_text)
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["created"]) == 1
+    entry = body["created"][0]
+    assert entry["department"] == "Computer Engineering"
+    assert entry["shared_with"] == ["Electrical Engineering"]
+    assert entry["shared_note"] is None
+    # The course was created once, in the owner department...
+    listed = client.get(f"/courses/?department_id={ctx['dept']['id']}",
+                        headers=ctx["headers"]).json()
+    course = next(c for c in listed if c["code"] == "CEF201")
+    # ...and linked to the Electrical Engineering level-400 class.
+    shared = client.get(f"/courses/{course['id']}/shared",
+                        headers=ctx["headers"]).json()
+    assert [s["class_id"] for s in shared] == [ee["class"]["id"]]
+
+
+def test_shared_course_note_when_shared_dept_has_no_class(client, auth_headers):
+    ctx = setup_faculty_head(client, auth_headers)
+    _add_dept_with_class(client, auth_headers, ctx["fac"],
+                         "Electrical Engineering", "EEF", 400, with_class=False)
+    csv_text = (
+        "code,name,level,department\n"
+        "CEF201,Circuits,400,Computer Engineering | Electrical Engineering\n"
+    )
+    r = _upload(client, ctx["headers"], csv_text)
+    body = r.json()
+    assert len(body["created"]) == 1
+    entry = body["created"][0]
+    assert entry["shared_with"] == []
+    assert "has no classes" in entry["shared_note"]
+    # Owner course still created.
+    listed = client.get(f"/courses/?department_id={ctx['dept']['id']}",
+                        headers=ctx["headers"]).json()
+    assert any(c["code"] == "CEF201" for c in listed)
+
+
+def test_shared_course_unknown_shared_dept_is_noted(client, auth_headers):
+    ctx = setup_faculty_head(client, auth_headers)
+    csv_text = (
+        "code,name,level,department\n"
+        "CEF201,Circuits,400,Computer Engineering | Ghost Department\n"
+    )
+    r = _upload(client, ctx["headers"], csv_text)
+    entry = r.json()["created"][0]
+    assert entry["shared_with"] == []
+    assert "not found" in entry["shared_note"]
+
+
+def test_single_department_row_has_empty_shared(client, auth_headers):
+    ctx = setup_faculty_head(client, auth_headers)
+    csv_text = "code,name,level,department\nCEF440,Internet Programming,400,Computer Engineering\n"
+    entry = _upload(client, ctx["headers"], csv_text).json()["created"][0]
+    assert entry["shared_with"] == []
+    assert entry["shared_note"] is None
+
+
+def test_shared_course_dry_run_persists_no_links(client, auth_headers):
+    ctx = setup_faculty_head(client, auth_headers)
+    ee = _add_dept_with_class(client, auth_headers, ctx["fac"],
+                              "Electrical Engineering", "EEF", 400, "EEF400")
+    csv_text = (
+        "code,name,level,department\n"
+        "CEF201,Circuits,400,Computer Engineering | Electrical Engineering\n"
+    )
+    r = _upload(client, ctx["headers"], csv_text, dry_run=True)
+    body = r.json()
+    assert body["dry_run"] is True
+    assert body["created"][0]["shared_with"] == ["Electrical Engineering"]
+    # Nothing persisted: no course, hence no shared links.
+    listed = client.get(f"/courses/?department_id={ctx['dept']['id']}",
+                        headers=ctx["headers"]).json()
+    assert listed == []
+
+
+def test_shared_course_xlsx(client, auth_headers):
+    ctx = setup_faculty_head(client, auth_headers)
+    ee = _add_dept_with_class(client, auth_headers, ctx["fac"],
+                              "Electrical Engineering", "EEF", 400, "EEF400")
+    content = _xlsx_bytes([
+        ["code", "name", "level", "department"],
+        ["CEF201", "Circuits", 400, "Computer Engineering | Electrical Engineering"],
+    ])
+    r = _upload_xlsx(client, ctx["headers"], content)
+    assert r.status_code == 200
+    entry = r.json()["created"][0]
+    assert entry["shared_with"] == ["Electrical Engineering"]
