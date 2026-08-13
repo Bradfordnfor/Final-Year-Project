@@ -1,5 +1,10 @@
 class AppConstants {
-  static const String baseUrl = 'http://localhost:8000';
+  // Backend API URL. Defaults to local dev; override at build time with
+  // --dart-define=API_BASE_URL=https://your-backend.example.com
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:8000',
+  );
 
   static const List<String> daysOfWeek = [
     'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',

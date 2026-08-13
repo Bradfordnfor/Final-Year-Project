@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
+    # Allowed browser origins for CORS: comma-separated list, or "*" for any.
+    # In production set this to your frontend URL, e.g. "https://app.example.com".
+    allowed_origins: str = "*"
+
     # Email delivery (absence of smtp_host selects the console backend)
     smtp_host: str | None = None
     smtp_port: int = 587

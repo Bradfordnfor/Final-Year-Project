@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from app.config import settings
 from app.routers import (
     auth, universities, faculties, departments, rooms, semesters,
     academic, courses, users, buildings, timetable, export, faculty_setup,
@@ -33,14 +34,19 @@ class ErrorToJsonMiddleware(BaseHTTPMiddleware):
             return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
+# Origins allowed to call the API from a browser. Configurable via ALLOWED_ORIGINS
+# (comma-separated); "*" allows any. Auth uses Bearer tokens, not cookies, so
+# credentials are not needed — which also keeps a restricted origin list valid.
+_origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+
 # Order matters: the error-catcher is added first so it sits *inside* the CORS
 # middleware (added last, therefore outermost), letting CORS headers wrap error
 # responses too.
 app.add_middleware(ErrorToJsonMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_origins or ["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
