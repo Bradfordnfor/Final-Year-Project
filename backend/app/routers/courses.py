@@ -248,6 +248,9 @@ def _import_faculty_courses(db, user, header, rows, dry_run):
 
         # First department owns the course; the rest are shared with it.
         dept_names = [d.strip() for d in dept_raw.split("|") if d.strip()]
+        if not dept_names:
+            skipped.append({"code": code, "reason": "missing required field"})
+            continue
         owner_name = dept_names[0]
         shared_names = dept_names[1:]
 
@@ -311,6 +314,7 @@ def _import_faculty_courses(db, user, header, rows, dry_run):
         # Resolve shared departments (best-effort; a problem is noted, never fatal).
         shared_with, shared_problems, shared_class_ids = [], [], []
         seen_share_ids = set()
+        seen_share_depts = set()
         for sname in shared_names:
             sdept = dept_by_name.get(sname.lower())
             if not sdept:
@@ -318,6 +322,9 @@ def _import_faculty_courses(db, user, header, rows, dry_run):
                 continue
             if sdept.id == dept.id:
                 continue  # owner listed again; its own classes are already covered
+            if sdept.id in seen_share_depts:
+                continue
+            seen_share_depts.add(sdept.id)
             slevel = level_by_key.get((sdept.id, level_num))
             if not slevel:
                 shared_problems.append(f"{sdept.name}: no level {level_num} - not shared")

@@ -436,3 +436,17 @@ def test_shared_course_xlsx(client, auth_headers):
     assert r.status_code == 200
     entry = r.json()["created"][0]
     assert entry["shared_with"] == ["Electrical Engineering"]
+
+
+def test_shared_course_empty_department_cell_is_skipped(client, auth_headers):
+    ctx = setup_faculty_head(client, auth_headers)
+    csv_text = (
+        "code,name,level,department\n"
+        "CEF900,Bad Row,400,|\n"                       # degenerate department cell
+        "CEF901,Good Row,400,Computer Engineering\n"   # valid, must still import
+    )
+    r = _upload(client, ctx["headers"], csv_text)
+    assert r.status_code == 200
+    body = r.json()
+    assert [c["code"] for c in body["created"]] == ["CEF901"]
+    assert body["skipped"][0]["code"] == "CEF900"
