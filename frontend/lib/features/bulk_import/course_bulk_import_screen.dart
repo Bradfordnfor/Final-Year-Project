@@ -112,7 +112,7 @@ class _CourseBulkImportScreenState extends State<CourseBulkImportScreen> {
                         _FormatRow('code', 'Course code, e.g. CEF440', required: true),
                         _FormatRow('name', 'Course name', required: true),
                         _FormatRow('level', 'Year of study: 200, 300, 400', required: true),
-                        _FormatRow('department', 'Department in your faculty', required: true),
+                        _FormatRow('department', 'Department in your faculty; list several with | to share one course', required: true),
                         _FormatRow('semester', '1 or 2 (year-long is university-wide)', required: false),
                         _FormatRow('weekly_hours', 'Hours per week (default 2)', required: false),
                         _FormatRow('room_type', 'lecture_hall / lab / studio', required: false),
@@ -136,7 +136,7 @@ class _CourseBulkImportScreenState extends State<CourseBulkImportScreen> {
                           _isFacultyHead
                               ? 'code,name,level,department,semester,lecturer\n'
                                 'CEF440,Internet Programming,400,Computer Engineering,1,Dr. Ateba\n'
-                                'CEF445,Distributed Systems,400,Computer Engineering,2,\n'
+                                'CEF201,Circuits,400,Computer Engineering | Electrical Engineering,1,\n'
                               : 'code,name,lecturer\n'
                                 'UB101,Use of English,\n'
                                 'UB102,Civics and Ethics,\n',
@@ -148,9 +148,11 @@ class _CourseBulkImportScreenState extends State<CourseBulkImportScreen> {
                       Text(
                         _isFacultyHead
                             ? 'Courses are created in your faculty. Department and '
-                              'level are matched by name/number. A lecturer name is '
-                              'optional: a clean match is assigned, anything else is '
-                              'left for you to assign manually.'
+                              'level are matched by name/number. To share one course '
+                              'across departments, list them separated by | (the first '
+                              'owns it); it is created once and its other departments\' '
+                              'classes are linked. A lecturer name is optional: a clean '
+                              'match is assigned, anything else is left to assign manually.'
                             : 'These are year-long university-wide requirements '
                               '(semester is set automatically). A lecturer name is '
                               'optional and auto-matched.',
@@ -287,6 +289,8 @@ class _CourseBulkImportScreenState extends State<CourseBulkImportScreen> {
                             ].join('  ·  '),
                             lecturer: lecturer,
                             note: note,
+                            sharedWith: (m['shared_with'] as List?)?.cast<String>() ?? const [],
+                            sharedNote: m['shared_note'] as String?,
                           );
                         }),
                         if ((_preview!['skipped'] as List?)?.isNotEmpty == true) ...[
@@ -353,6 +357,8 @@ class _CourseBulkImportScreenState extends State<CourseBulkImportScreen> {
                     ].join('  ·  '),
                     lecturer: m['lecturer'] as String?,
                     note: m['lecturer_note'] as String?,
+                    sharedWith: (m['shared_with'] as List?)?.cast<String>() ?? const [],
+                    sharedNote: m['shared_note'] as String?,
                   );
                 }),
                 if ((_result!['skipped'] as List?)?.isNotEmpty == true) ...[
@@ -382,9 +388,12 @@ class _PreviewCourseRow extends StatelessWidget {
   final String subtitle;
   final String? lecturer;
   final String? note;
+  final List<String> sharedWith;
+  final String? sharedNote;
   const _PreviewCourseRow({
     required this.code, required this.name, required this.subtitle,
     this.lecturer, this.note,
+    this.sharedWith = const [], this.sharedNote,
   });
 
   @override
@@ -409,6 +418,11 @@ class _PreviewCourseRow extends StatelessWidget {
             Text('$code — $name',
                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             Text(subtitle, style: TextStyle(fontSize: 11, color: cs.outline)),
+            if (sharedWith.isNotEmpty)
+              Text('shared with: ${sharedWith.join(', ')}',
+                  style: TextStyle(fontSize: 11, color: cs.primary)),
+            if (sharedNote != null)
+              Text(sharedNote!, style: TextStyle(fontSize: 11, color: cs.error)),
           ]),
         ),
         badge,
