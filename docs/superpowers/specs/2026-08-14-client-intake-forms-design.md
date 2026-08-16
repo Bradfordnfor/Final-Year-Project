@@ -109,8 +109,10 @@ One submission **per lecturer**, filled by the lecturer themselves.
   - "Mark the half-days you are **NOT** available."
   - Checkbox grid: rows = teaching days (from Section 2's range), columns =
     Morning / Afternoon.
-  - Unmarked cells are treated as available; marked cells are excluded when the
-    officer records the lecturer's availability.
+  - A marked cell is a slot the lecturer is **NOT** available; it is saved
+    directly as one of the lecturer's `LecturerAvailability` rows, which the
+    solver treats as a blocked slot — no inversion. Unmarked cells are left
+    unrecorded (available).
 
 ## Ingestion — how responses become app data
 

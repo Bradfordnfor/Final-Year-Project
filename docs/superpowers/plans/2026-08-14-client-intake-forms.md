@@ -14,7 +14,7 @@
 - **Courses template columns, verbatim:** `code, name, level, department, semester, weekly_hours, room_type, lecturer` — must match `POST /courses/bulk-import/` faculty-head format exactly (`department` may list several names separated by `|` to share a course; owner first).
 - **Rooms template columns, verbatim:** `building, room_name, capacity, room_type, active`.
 - **Course `room_type` ∈ `lecture_hall | lab | studio`; Room `room_type` ∈ `lecture_hall | lab | outdoor`.** These two enums differ — do not "unify" them; document each where it is used.
-- **Lecturers are not bulk imported.** Form B is one submission per lecturer; the operator creates each account individually. The availability grid collects the half-days a lecturer is **NOT** available; the app stores availability (the complement).
+- **Lecturers are not bulk imported.** Form B is one submission per lecturer; the operator creates each account individually. The availability grid collects the half-days a lecturer is **NOT** available; ticked cells are saved directly as the lecturer's unavailable slots — no complement.
 - **All deliverables live under `docs/client_intake/`.** Do not touch `backend/` or `frontend/` source.
 - **Commit style:** plain sentences, no `feat:`/`fix:` prefixes, no `Co-Authored-By` line.
 - Use the repo Python via `backend/.venv` (run generator from the `backend` dir so `openpyxl` resolves).
@@ -81,7 +81,8 @@ COURSES_HEADER = ["code", "name", "level", "department", "semester",
 COURSES_EXAMPLES = [
     ["CEF440", "Internet Programming", 400, "Computer Engineering", 1, 3,
      "lecture_hall", "Dr. Ateba"],
-    ["CEF201", "Circuits", 400, "Computer Engineering | Electrical Engineering",
+    ["CEF201", "Circuits", 400,
+     "Computer Engineering | Electrical & Electronic Engineering",
      1, 3, "lecture_hall", ""],
 ]
 COURSES_NOTES = [
@@ -91,7 +92,7 @@ COURSES_NOTES = [
     ["level", "Year of study number: 100, 200, 300, 400, 500."],
     ["department", "Department name in this faculty. To share ONE course across "
                    "departments, list them separated by | (first owns it), e.g. "
-                   "Computer Engineering | Electrical Engineering."],
+                   "Computer Engineering | Electrical & Electronic Engineering."],
     ["semester", "1 (first) or 2 (second)."],
     ["weekly_hours", "Contact hours per week. Leave blank for the default (2)."],
     ["room_type", "One of: lecture_hall, lab, studio. Match a room type you have."],
@@ -332,10 +333,11 @@ lecturers). Title: "Engineering & Technology — Lecturer Registration".
 - Create one lecturer account per response (they are NOT bulk imported): use the
   create-user screen with role = lecturer and the department from Q3; this emails
   the activation link.
-- Record availability as the COMPLEMENT of the ticked cells: the app stores the
-  slots a lecturer IS available for, so translate "Mon Morning ticked" into
-  "exclude all Monday-morning time slots" when setting their availability.
-- If a lecturer ticks nothing, they are available for the whole teaching week.
+- Enter each ticked half-day directly as one of the lecturer's **unavailable**
+  slots; ticked cells are saved directly as the lecturer's unavailable slots —
+  no complement, no inversion.
+- If a lecturer ticks nothing, save no slots — they are available for the
+  whole teaching week.
 ```
 
 - [ ] **Step 2: Verify the grid and complement rule are documented**
@@ -387,8 +389,10 @@ bottom, once all forms are in.
    bulk-import screen (faculty-head mode). Use Preview first; confirm the shared
    (`|`) rows show the right shared departments, then Import.
 6. **Lecturers.** For each Form B response, create a lecturer account
-   (create-user, role = lecturer, department from Q3). Then set that lecturer's
-   availability as the complement of the ticked half-days (see Form B notes).
+   (create-user, role = lecturer, department from Q3). Then record each ticked
+   half-day directly as one of that lecturer's unavailable slots; ticked cells
+   are saved directly as the lecturer's unavailable slots — no complement, no
+   inversion.
 7. **Generate.** Start a timetable run for the Engineering & Technology faculty
    and the active semester. Review conflicts; confirm no class or lecturer is
    double-booked and every session fits a room of the required type and size.

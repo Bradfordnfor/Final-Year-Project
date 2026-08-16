@@ -21,7 +21,10 @@ lecturers). Title: "Engineering & Technology — Lecturer Registration".
 - Create one lecturer account per response (they are NOT bulk imported): use the
   create-user screen with role = lecturer and the department from Q3; this emails
   the activation link.
-- Record availability as the COMPLEMENT of the ticked cells: the app stores the
-  slots a lecturer IS available for, so translate "Mon Morning ticked" into
-  "exclude all Monday-morning time slots" when setting their availability.
-- If a lecturer ticks nothing, they are available for the whole teaching week.
+- Enter each ticked half-day directly as one of the lecturer's **unavailable**
+  slots. The app labels this a lecturer's "availability", but a saved slot
+  means the lecturer is NOT available then (the solver blocks it) — so the
+  ticked cells map one-to-one onto what you save. Do NOT invert or take a
+  complement.
+- If a lecturer ticks nothing, save no slots — they are available for the
+  whole teaching week.

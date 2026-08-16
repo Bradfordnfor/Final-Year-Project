@@ -20,14 +20,17 @@ bottom, once all forms are in.
    bulk-import screen (faculty-head mode). Use Preview first; confirm the shared
    (`|`) rows show the right shared departments, then Import.
 6. **Lecturers.** For each Form B response, create a lecturer account
-   (create-user, role = lecturer, department from Q3). Then set that lecturer's
-   availability as the complement of the ticked half-days (see Form B notes).
+   (create-user, role = lecturer, department from Q3). Then record each ticked
+   half-day directly as one of that lecturer's unavailable slots — the app
+   calls this "availability", but a saved slot means NOT available, so enter
+   the ticked cells as-is (no complement, no inversion).
 7. **Generate.** Start a timetable run for the Engineering & Technology faculty
    and the active semester. Review conflicts; confirm no class or lecturer is
    double-booked and every session fits a room of the required type and size.
 
 ## Acceptance check
-- All six loading steps complete with no manual database edits.
+- All loading steps complete (steps 1–6 load data, step 7 generates) with no
+  manual database edits.
 - A generated run has zero hard conflicts (class clash, lecturer clash,
   room-type mismatch, over-capacity beyond the university overflow threshold).
 - The timetable reads back correctly per department and per level.

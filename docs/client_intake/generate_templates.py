@@ -29,7 +29,8 @@ COURSES_HEADER = ["code", "name", "level", "department", "semester",
 COURSES_EXAMPLES = [
     ["CEF440", "Internet Programming", 400, "Computer Engineering", 1, 3,
      "lecture_hall", "Dr. Ateba"],
-    ["CEF201", "Circuits", 400, "Computer Engineering | Electrical Engineering",
+    ["CEF201", "Circuits", 400,
+     "Computer Engineering | Electrical & Electronic Engineering",
      1, 3, "lecture_hall", ""],
 ]
 COURSES_NOTES = [
@@ -39,7 +40,7 @@ COURSES_NOTES = [
     ["level", "Year of study number: 100, 200, 300, 400, 500."],
     ["department", "Department name in this faculty. To share ONE course across "
                    "departments, list them separated by | (first owns it), e.g. "
-                   "Computer Engineering | Electrical Engineering."],
+                   "Computer Engineering | Electrical & Electronic Engineering."],
     ["semester", "1 (first) or 2 (second)."],
     ["weekly_hours", "Contact hours per week. Leave blank for the default (2)."],
     ["room_type", "One of: lecture_hall, lab, studio. Match a room type you have."],
