@@ -10,6 +10,7 @@ class CourseCreate(BaseModel):
     department_id: Optional[int] = None
     university_id: Optional[int] = None
     lecturer_id: Optional[int] = None
+    class_id: Optional[int] = None
     weekly_hours: int = 2
     semester: int = 1  # 1 = first, 2 = second, 0 = both
 
@@ -19,6 +20,7 @@ class CourseUpdate(BaseModel):
     name: Optional[str] = None
     room_type_required: Optional[str] = None
     lecturer_id: Optional[int] = None
+    class_id: Optional[int] = None
     weekly_hours: Optional[int] = None
     semester: Optional[int] = None
 
@@ -32,6 +34,7 @@ class CourseOut(BaseModel):
     department_id: Optional[int]
     university_id: Optional[int]
     lecturer_id: Optional[int]
+    class_id: Optional[int]
     weekly_hours: int
     semester: int
 

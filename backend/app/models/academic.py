@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy import String, Integer, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -50,6 +51,9 @@ class Class(Base):
     name: Mapped[str] = mapped_column(String(50))
     # e.g. "EE300", "CE300"
     population: Mapped[int] = mapped_column(Integer, default=0)
+    track: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    # Specialization label, e.g. "Software" / "Networking"; NULL for a level's
+    # single (non-specialized) class.
     level_id: Mapped[int] = mapped_column(ForeignKey("levels.id"))
 
     level: Mapped["Level"] = relationship(back_populates="classes")

@@ -17,6 +17,9 @@ class Course(Base):
     university_id: Mapped[Optional[int]] = mapped_column(ForeignKey("universities.id"), nullable=True)
     # university_id is set for university-wide courses (no department)
     lecturer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("lecturers.id"), nullable=True)
+    class_id: Mapped[Optional[int]] = mapped_column(ForeignKey("classes.id"), nullable=True)
+    # When set, the course belongs to just this one class (a specialization
+    # track). When NULL, it belongs to every class at level_id (the default).
     weekly_hours: Mapped[int] = mapped_column(Integer, default=2)
     semester: Mapped[int] = mapped_column(Integer, default=1)
     # which semester of study this course runs in: 1 = first, 2 = second, 0 = both (year-long)

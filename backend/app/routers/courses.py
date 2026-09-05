@@ -34,6 +34,7 @@ def create_course(
         data["university_id"] = current_user.university_id
         data["department_id"] = None
         data["level_id"] = None
+        data["class_id"] = None
     else:
         # Timetable officer / super_admin: department_id is required
         if data.get("department_id") is None and data.get("university_id") is None:

@@ -64,11 +64,13 @@ class ClassCreate(BaseModel):
     name: str
     population: int
     level_id: int
+    track: Optional[str] = None
 
 
 class ClassUpdate(BaseModel):
     name: Optional[str] = None
     population: Optional[int] = None
+    track: Optional[str] = None
 
 
 class ClassOut(BaseModel):
@@ -76,6 +78,7 @@ class ClassOut(BaseModel):
     name: str
     population: int
     level_id: int
+    track: Optional[str]
 
     model_config = {"from_attributes": True}
 
