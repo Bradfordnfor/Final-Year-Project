@@ -86,13 +86,18 @@ def build_solver_input(
         shared_entries = db.query(SharedCourse).filter(SharedCourse.course_id == course.id).all()
         shared_class_ids = [s.class_id for s in shared_entries]
 
-        # Classes at this course's level
-        level_classes = (
-            db.query(Class)
-            .filter(Class.level_id == course.level_id)
-            .all()
-        )
-        own_class_ids = [c.id for c in level_classes]
+        # Classes this course is for. A course targeting one class (class_id
+        # set) is a specialization-track course: only that class attends. With
+        # no target (class_id NULL) every class at the level attends, as before.
+        if course.class_id is not None:
+            own_class_ids = [course.class_id]
+        else:
+            level_classes = (
+                db.query(Class)
+                .filter(Class.level_id == course.level_id)
+                .all()
+            )
+            own_class_ids = [c.id for c in level_classes]
         attending_class_ids = list(set(own_class_ids + shared_class_ids))
         attending_classes = db.query(Class).filter(Class.id.in_(attending_class_ids)).all()
 
