@@ -312,6 +312,26 @@ def _import_faculty_courses(db, user, header, rows, dry_run):
         lecturer_raw = (row.get("lecturer") or "").strip()
         lect_id, lect_note = match_lecturer(lecturer_raw, candidates_by_dept.get(dept.id, []))
 
+        # Optional specialization track: match the row's track label against a
+        # class at this (department, level). Blank track = whole level.
+        track_raw = (row.get("track") or "").strip()
+        target_class_id = None
+        if track_raw:
+            level_classes = classes_by_level.get(level.id, [])
+            match = next(
+                (c for c in level_classes
+                 if (c.track or "").strip().lower() == track_raw.lower()),
+                None,
+            )
+            if not match:
+                skipped.append({
+                    "code": code,
+                    "reason": f"track '{track_raw}' not found at level {level_num} "
+                              f"in '{dept.name}'",
+                })
+                continue
+            target_class_id = match.id
+
         # Resolve shared departments (best-effort; a problem is noted, never fatal).
         shared_with, shared_problems, shared_class_ids = [], [], []
         seen_share_ids = set()
@@ -346,7 +366,7 @@ def _import_faculty_courses(db, user, header, rows, dry_run):
             "department": dept.name, "shared_with": shared_with,
             "semester": semester,
             "lecturer": lecturer_raw or None, "lecturer_note": lect_note,
-            "shared_note": shared_note,
+            "shared_note": shared_note, "track": track_raw or None,
         }
 
         if not dry_run:
@@ -354,6 +374,7 @@ def _import_faculty_courses(db, user, header, rows, dry_run):
                 code=code, name=name, room_type_required=room_type,
                 level_id=level.id, department_id=dept.id, university_id=None,
                 lecturer_id=lect_id, weekly_hours=weekly_hours, semester=semester,
+                class_id=target_class_id,
             )
             db.add(course)
             db.flush()  # assign course.id before adding shared links
