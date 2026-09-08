@@ -55,6 +55,27 @@ class AcademicApi {
     await _client.put('/classes/$classId', data: {'population': population});
   }
 
+  /// Create a class under a level. Pass [track] to make it a specialization
+  /// track (e.g. "Software"); leave null for an ordinary single class.
+  Future<StudyClass> createClass({
+    required int levelId,
+    required String name,
+    required int population,
+    String? track,
+  }) async {
+    final response = await _client.post('/classes/', data: {
+      'name': name,
+      'population': population,
+      'level_id': levelId,
+      if (track != null && track.isNotEmpty) 'track': track,
+    });
+    return StudyClass.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteClass(int classId) async {
+    await _client.delete('/classes/$classId');
+  }
+
   Future<List<Map<String, dynamic>>> getGroups(int classId) async {
     final response = await _client.get('/groups/');
     return (response.data as List)

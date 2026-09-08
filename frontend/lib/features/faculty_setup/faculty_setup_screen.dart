@@ -900,6 +900,7 @@ class _FacultySetupScreenState extends State<FacultySetupScreen> {
                   _addCourse(levelId, dept['id'] as int),
               onDeleteLevel: (levelId) => _deleteLevel(levelId),
               onDeleteCourse: (courseId) => _deleteCourse(courseId),
+              onChanged: _loadTree,
             );
           },
           childCount: depts.length,
@@ -970,6 +971,7 @@ class _DepartmentCard extends StatefulWidget {
   final Future<void> Function(int levelId) onAddCourse;
   final void Function(int levelId) onDeleteLevel;
   final void Function(int courseId) onDeleteCourse;
+  final VoidCallback onChanged;
 
   const _DepartmentCard({
     required this.dept,
@@ -978,6 +980,7 @@ class _DepartmentCard extends StatefulWidget {
     required this.onAddCourse,
     required this.onDeleteLevel,
     required this.onDeleteCourse,
+    required this.onChanged,
   });
 
   @override
@@ -1058,6 +1061,7 @@ class _DepartmentCardState extends State<_DepartmentCard> {
                 onDeleteLevel: () =>
                     widget.onDeleteLevel(level['id'] as int),
                 onDeleteCourse: widget.onDeleteCourse,
+                onChanged: widget.onChanged,
               );
             }),
             if (levels.isEmpty)
@@ -1080,12 +1084,14 @@ class _LevelTile extends StatefulWidget {
   final VoidCallback onAddCourse;
   final VoidCallback onDeleteLevel;
   final void Function(int courseId) onDeleteCourse;
+  final VoidCallback onChanged;
 
   const _LevelTile({
     required this.level,
     required this.onAddCourse,
     required this.onDeleteLevel,
     required this.onDeleteCourse,
+    required this.onChanged,
   });
 
   @override
@@ -1174,6 +1180,119 @@ class _LevelTileState extends State<_LevelTile> {
     }
   }
 
+  List<Map<String, dynamic>> get _classes =>
+      (widget.level['classes'] as List? ?? []).cast<Map<String, dynamic>>();
+
+  Future<void> _addTrackClass() async {
+    final level = widget.level;
+    final nameCtrl = TextEditingController();
+    final popCtrl = TextEditingController();
+    final trackCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Add track — Level ${level['number']}'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+              controller: trackCtrl,
+              decoration: const InputDecoration(
+                  labelText: 'Track', hintText: 'e.g. Software')),
+          const SizedBox(height: 12),
+          TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(
+                  labelText: 'Class name', hintText: 'e.g. CE400 Software')),
+          const SizedBox(height: 12),
+          TextField(
+              controller: popCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                  labelText: 'Student population', hintText: 'e.g. 120')),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Add')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final track = trackCtrl.text.trim();
+    final name = nameCtrl.text.trim();
+    final pop = int.tryParse(popCtrl.text.trim()) ?? 0;
+    if (name.isEmpty || track.isEmpty) {
+      Get.snackbar('Missing info', 'Track and class name are required',
+          snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
+    try {
+      await AcademicApi(ApiClient(token: AuthController.to.token)).createClass(
+        levelId: level['id'] as int, name: name, population: pop, track: track,
+      );
+      widget.onChanged();
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to add track: $e',
+          snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
+  Future<void> _deleteTrackClass(int classId, String label) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete class'),
+        content: Text('Delete "$label"? Courses targeting only this class will '
+            'no longer be scheduled.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await AcademicApi(ApiClient(token: AuthController.to.token))
+          .deleteClass(classId);
+      widget.onChanged();
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to delete class: $e',
+          snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
+  Widget _buildTrackStrip(ColorScheme cs) {
+    final classes = _classes;
+    final hasTracks =
+        classes.any((c) => (c['track'] as String?) != null) || classes.length > 1;
+    if (!hasTracks) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(48, 0, 16, 8),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final c in classes)
+            Chip(
+              visualDensity: VisualDensity.compact,
+              label: Text(
+                '${(c['track'] as String?) ?? c['name']} · ${c['population']}',
+                style: const TextStyle(fontSize: 11),
+              ),
+              onDeleted: () => _deleteTrackClass(c['id'] as int,
+                  (c['track'] as String?) ?? c['name'] as String),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -1251,6 +1370,11 @@ class _LevelTileState extends State<_LevelTile> {
                 ],
                 const Spacer(),
                 IconButton(
+                  icon: const Icon(Icons.call_split, size: 18),
+                  onPressed: _addTrackClass,
+                  tooltip: 'Add specialization track',
+                ),
+                IconButton(
                   icon: const Icon(Icons.book_outlined, size: 18),
                   onPressed: widget.onAddCourse,
                   tooltip: 'Add Course',
@@ -1279,6 +1403,7 @@ class _LevelTileState extends State<_LevelTile> {
             ),
           ),
         ),
+        _buildTrackStrip(cs),
         if (_expanded) ...[
           // Tab row
           Row(
