@@ -114,23 +114,29 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
     });
   }
 
+  /// Every class id at a level — includes all specialization tracks, so a
+  /// scoped view never drops one. Falls back to the legacy single `class_id`.
+  List<int> _classIdsOf(Map<String, dynamic> level) {
+    final ids = (level['class_ids'] as List?)?.whereType<int>().toList();
+    if (ids != null && ids.isNotEmpty) return ids;
+    final cid = level['class_id'] as int?;
+    return cid != null ? [cid] : [];
+  }
+
   /// The class IDs covered by the current selection.
   List<int> _scope() {
     if (_selectedLevel != null) {
-      final cid = _selectedLevel!['class_id'] as int?;
-      return cid != null ? [cid] : [];
+      return _classIdsOf(_selectedLevel!);
     }
     if (_selectedDept != null) {
       return (_deptLevels[_selectedDept!.id] ?? [])
-          .map((l) => l['class_id'] as int?)
-          .whereType<int>()
+          .expand(_classIdsOf)
           .toList();
     }
     if (_selectedFaculty != null) {
       return _deptLevels.values
           .expand((ls) => ls)
-          .map((l) => l['class_id'] as int?)
-          .whereType<int>()
+          .expand(_classIdsOf)
           .toList();
     }
     return [];

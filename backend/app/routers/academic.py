@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.academic import Level, Class, ClassGroup
+from app.models.course import Course, SharedCourse
 from app.schemas.academic import (
     LevelCreate, LevelOut,
     ClassCreate, ClassUpdate, ClassOut,
@@ -95,6 +96,25 @@ def delete_class(
     obj = db.get(Class, class_id)
     if not obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    # Block deletion while things still reference this class, so we fail with a
+    # clear message instead of a database foreign-key error. This matters for a
+    # track class that is actually in use (its own courses, shared courses, or
+    # lab groups).
+    blockers = []
+    if db.query(Course).filter(Course.class_id == class_id).first():
+        blockers.append("courses")
+    if db.query(SharedCourse).filter(SharedCourse.class_id == class_id).first():
+        blockers.append("shared courses")
+    if db.query(ClassGroup).filter(ClassGroup.class_id == class_id).first():
+        blockers.append("lab groups")
+    if blockers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete this class: it still has {', '.join(blockers)}. "
+                   "Reassign or remove those first.",
+        )
+
     db.delete(obj)
     db.commit()
 

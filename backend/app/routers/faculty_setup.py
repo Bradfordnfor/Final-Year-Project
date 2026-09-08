@@ -59,7 +59,11 @@ def get_public_levels(department_id: int, db: Session = Depends(get_db)):
         result.append({
             "id": level.id,
             "number": level.number,
+            # Kept for backward compatibility (single-class levels).
             "class_id": first_class.id if first_class else None,
+            # Every class at the level, so a filtered/exported timetable
+            # includes all specialization tracks, not just the first.
+            "class_ids": [c.id for c in level.classes],
         })
     return result
 

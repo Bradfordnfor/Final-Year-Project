@@ -1244,8 +1244,8 @@ class _LevelTileState extends State<_LevelTile> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete class'),
-        content: Text('Delete "$label"? Courses targeting only this class will '
-            'no longer be scheduled.'),
+        content: Text('Delete "$label"? This is only allowed if no courses, '
+            'shared courses or lab groups still point at it.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),

@@ -41,7 +41,11 @@ class Level(Base):
     department_id: Mapped[int] = mapped_column(ForeignKey("departments.id"))
 
     department: Mapped["Department"] = relationship(back_populates="levels")
-    classes: Mapped[list["Class"]] = relationship(back_populates="level")
+    # Ordered by id so the "first class" (used for single-class levels) is
+    # stable now that a level can hold several specialization-track classes.
+    classes: Mapped[list["Class"]] = relationship(
+        back_populates="level", order_by="Class.id"
+    )
 
 
 class Class(Base):
