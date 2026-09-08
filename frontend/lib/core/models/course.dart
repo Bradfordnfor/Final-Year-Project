@@ -7,6 +7,7 @@ class Course {
   final int? departmentId;
   final int? universityId;
   final int? lecturerId;
+  final int? classId; // when set, the course targets one specialization-track class
   final int weeklyHours;
   final int semester; // 1 = first, 2 = second, 0 = both
 
@@ -14,6 +15,7 @@ class Course {
     required this.id, required this.code, required this.name,
     required this.roomTypeRequired, this.levelId,
     this.departmentId, this.universityId, this.lecturerId,
+    this.classId,
     this.weeklyHours = 2,
     this.semester = 1,
   });
@@ -27,6 +29,7 @@ class Course {
         departmentId: json['department_id'] as int?,
         universityId: json['university_id'] as int?,
         lecturerId: json['lecturer_id'] as int?,
+        classId: json['class_id'] as int?,
         weeklyHours: (json['weekly_hours'] as int?) ?? 2,
         semester: (json['semester'] as int?) ?? 1,
       );

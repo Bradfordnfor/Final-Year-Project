@@ -68,10 +68,12 @@ class StudyClass {
   final String name;
   final int population;
   final int levelId;
+  final String? track; // specialization label, e.g. "Software"; null = single class
 
   const StudyClass({
     required this.id, required this.name,
     required this.population, required this.levelId,
+    this.track,
   });
 
   factory StudyClass.fromJson(Map<String, dynamic> json) => StudyClass(
@@ -79,5 +81,6 @@ class StudyClass {
         name: json['name'] as String,
         population: json['population'] as int,
         levelId: json['level_id'] as int,
+        track: json['track'] as String?,
       );
 }

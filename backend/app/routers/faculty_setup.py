@@ -99,8 +99,16 @@ def get_faculty_tree(
             level_node = {
                 "id": level.id,
                 "number": level.number,
+                # Kept for backward compatibility: single-class levels show one
+                # population. The `classes` list below carries every class at
+                # the level (specialization tracks), each with its track label.
                 "population": first_class.population if first_class else 0,
                 "class_id": first_class.id if first_class else None,
+                "classes": [
+                    {"id": c.id, "name": c.name,
+                     "population": c.population, "track": c.track}
+                    for c in level.classes
+                ],
                 "courses": [
                     {
                         "id": co.id, "code": co.code, "name": co.name,

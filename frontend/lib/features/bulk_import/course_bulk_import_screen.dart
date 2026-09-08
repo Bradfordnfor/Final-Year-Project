@@ -117,6 +117,7 @@ class _CourseBulkImportScreenState extends State<CourseBulkImportScreen> {
                         _FormatRow('weekly_hours', 'Hours per week (default 2)', required: false),
                         _FormatRow('room_type', 'lecture_hall / lab / studio', required: false),
                         _FormatRow('lecturer', 'Lecturer name (auto-matched)', required: false),
+                        _FormatRow('track', 'Specialization track this course is for (must match a class\'s track at that level); blank = whole level', required: false),
                       ] else ...const [
                         _FormatRow('code', 'Course code, e.g. UB101', required: true),
                         _FormatRow('name', 'Course name', required: true),
@@ -134,9 +135,10 @@ class _CourseBulkImportScreenState extends State<CourseBulkImportScreen> {
                         ),
                         child: Text(
                           _isFacultyHead
-                              ? 'code,name,level,department,semester,lecturer\n'
-                                'CEF440,Internet Programming,400,Computer Engineering,1,Dr. Ateba\n'
-                                'CEF201,Circuits,400,Computer Engineering | Electrical Engineering,1,\n'
+                              ? 'code,name,level,department,semester,lecturer,track\n'
+                                'CEF440,Internet Programming,400,Computer Engineering,1,Dr. Ateba,\n'
+                                'CEF450,Network Security,400,Computer Engineering,1,,Networking\n'
+                                'CEF201,Circuits,400,Computer Engineering | Electrical Engineering,1,,\n'
                               : 'code,name,lecturer\n'
                                 'UB101,Use of English,\n'
                                 'UB102,Civics and Ethics,\n',
@@ -152,7 +154,10 @@ class _CourseBulkImportScreenState extends State<CourseBulkImportScreen> {
                               'across departments, list them separated by | (the first '
                               'owns it); it is created once and its other departments\' '
                               'classes are linked. A lecturer name is optional: a clean '
-                              'match is assigned, anything else is left to assign manually.'
+                              'match is assigned, anything else is left to assign manually. '
+                              'For a specialization level, set track to the class the course '
+                              'is for (e.g. Software / Networking); leave it blank for a course '
+                              'the whole level takes.'
                             : 'These are year-long university-wide requirements '
                               '(semester is set automatically). A lecturer name is '
                               'optional and auto-matched.',
