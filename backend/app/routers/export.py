@@ -1,12 +1,19 @@
 import csv
 import io
+import os
+from xml.sax.saxutils import escape
+from io import BytesIO
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.units import mm
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from PIL import Image
 from app.database import get_db
 from app.models.timetable import TimetableRun, TimetableEntry
 from app.models.academic import TimeSlot, Class
@@ -20,6 +27,28 @@ router = APIRouter(prefix="/export", tags=["Export"])
 
 WEEKDAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday",
                  "Friday", "Saturday", "Sunday"]
+
+
+_LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "watermark_logo.png")
+_FADED_LOGO_CACHE: dict = {}
+
+
+def _load_faded_logo(path: str):
+    """Return an ImageReader of the logo faded to a light watermark, or None if
+    the asset is missing (so the PDF still renders without it). Cached per path."""
+    if path in _FADED_LOGO_CACHE:
+        return _FADED_LOGO_CACHE[path]
+    result = None
+    if os.path.exists(path):
+        img = Image.open(path).convert("RGBA")
+        alpha = img.split()[3].point(lambda a: int(a * 0.08))  # 8% opacity
+        img.putalpha(alpha)
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        result = ImageReader(buf)
+    _FADED_LOGO_CACHE[path] = result
+    return result
 
 
 def build_grid(rows: list[dict]) -> dict:
@@ -136,26 +165,116 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
     )
 
 
-def _pdf_response(rows: list[dict], title: str, filename: str) -> StreamingResponse:
+def _run_identity(run) -> str:
+    """University · faculty codes for the run's footer (minimal, no departments)."""
+    uni_name = ""
+    fac_labels = []
+    for rf in run.faculties:
+        fac = rf.faculty
+        if not fac:
+            continue
+        fac_labels.append(fac.code or fac.name)
+        if fac.university:
+            uni_name = fac.university.name
+    parts = [p for p in [uni_name, *fac_labels] if p]
+    return " · ".join(parts)
+
+
+class _StampCanvas(canvas.Canvas):
+    """Draws the faded logo watermark (centered) and a footer line
+    (identity left, 'Page X of Y' right) on every page. Page total is known
+    only at save time, so pages are buffered."""
+    identity = ""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved = []
+
+    def showPage(self):
+        self._saved.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        total = len(self._saved)
+        for state in self._saved:
+            self.__dict__.update(state)
+            self._draw_stamps(total)
+            super().showPage()
+        super().save()
+
+    def _draw_stamps(self, total):
+        w, h = self._pagesize
+        logo = _load_faded_logo(_LOGO_PATH)
+        if logo is not None:
+            size = 90 * mm
+            self.drawImage(logo, (w - size) / 2, (h - size) / 2,
+                           width=size, height=size, mask="auto")
+        self.setFont("Helvetica", 8)
+        self.setFillColor(colors.grey)
+        self.drawString(15 * mm, 8 * mm, self.identity)
+        self.drawRightString(w - 15 * mm, 8 * mm,
+                             f"Page {self._pageNumber} of {total}")
+
+
+def _grid_pdf_response(grid: dict, run, filtered: bool, filename: str) -> StreamingResponse:
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
+                            leftMargin=12 * mm, rightMargin=12 * mm,
+                            topMargin=12 * mm, bottomMargin=14 * mm)
     styles = getSampleStyleSheet()
+    cell_style = ParagraphStyle("cell", parent=styles["Normal"],
+                                fontSize=7, leading=8)
+    legend_style = ParagraphStyle("legend", parent=styles["Normal"],
+                                  fontSize=8, leading=10)
 
-    headers = list(rows[0].keys())
-    table_data = [headers] + [[r[h] for h in headers] for r in rows]
+    days = grid["days"]
+    slots = grid["slots"]
 
-    table = Table(table_data, repeatRows=1)
+    def _cell(day, slot):
+        sessions = grid["cells"].get((day, slot), [])
+        if not sessions:
+            return ""
+        blocks = []
+        for s in sessions:
+            blocks.append(
+                f"<b>{escape(s['code'])}</b><br/>"
+                f"{escape(s['lecturer'])} · {escape(s['hall'])}"
+            )
+        return Paragraph("<br/><br/>".join(blocks), cell_style)
+
+    header = ["Time"] + days
+    table_data = [header]
+    for slot in slots:
+        table_data.append([slot] + [_cell(day, slot) for day in days])
+
+    time_w = 22 * mm
+    day_w = (doc.width - time_w) / max(len(days), 1)
+    col_widths = [time_w] + [day_w] * len(days)
+
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a237e")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("FONTSIZE", (0, 1), (0, -1), 8),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
-        ("BACKGROUND", (7, 1), (7, -1), colors.HexColor("#fff3e0")),
     ]))
 
-    doc.build([Paragraph(title, styles["Title"]), table])
+    title = f"Timetable — {run.name}" + (" (filtered)" if filtered else "")
+    story = [Paragraph(title, styles["Title"]), Spacer(1, 6), table, Spacer(1, 12)]
+
+    if grid["legend"]:
+        story.append(Paragraph("<b>Course codes</b>", legend_style))
+        legend_lines = "<br/>".join(
+            f"{escape(code)} — {escape(name)}" for code, name in grid["legend"]
+        )
+        story.append(Paragraph(legend_lines, legend_style))
+
+    _StampCanvas.identity = _run_identity(run)
+    doc.build(story, canvasmaker=_StampCanvas)
     buffer.seek(0)
     return StreamingResponse(
         buffer,
@@ -202,8 +321,9 @@ def export_pdf(
     ids = _resolve_class_filter(class_ids, class_id)
     rows = _rows_or_404(run_id, db, ids)
     suffix = "_filtered" if ids else ""
-    return _pdf_response(rows, f"Timetable Run — {run.name}",
-                         f"timetable_run_{run_id}{suffix}.pdf")
+    grid = build_grid(rows)
+    return _grid_pdf_response(grid, run, bool(ids),
+                             f"timetable_run_{run_id}{suffix}.pdf")
 
 
 # ── Public exports (no auth; published runs only — for students) ──────────────
@@ -240,5 +360,6 @@ def export_public_pdf(
     ids = _resolve_class_filter(class_ids, class_id)
     rows = _rows_or_404(run_id, db, ids)
     suffix = "_filtered" if ids else ""
-    return _pdf_response(rows, f"Timetable — {run.name}",
-                         f"timetable_{run_id}{suffix}.pdf")
+    grid = build_grid(rows)
+    return _grid_pdf_response(grid, run, bool(ids),
+                             f"timetable_{run_id}{suffix}.pdf")
