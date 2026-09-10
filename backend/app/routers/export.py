@@ -18,6 +18,61 @@ from app.core.permissions import get_current_user
 router = APIRouter(prefix="/export", tags=["Export"])
 
 
+WEEKDAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                 "Friday", "Saturday", "Sunday"]
+
+
+def build_grid(rows: list[dict]) -> dict:
+    """Turn flat detail rows into a days×slots grid model.
+
+    Pure and side-effect free so it can be unit-tested without rendering a PDF.
+    Course code and name are split from the existing "Course" field
+    ("<code> — <name>"), so the CSV export's row shape is untouched.
+    """
+    def _split_course(course: str) -> tuple[str, str]:
+        parts = course.split(" — ", 1)
+        code = parts[0].strip()
+        name = parts[1].strip() if len(parts) > 1 else ""
+        return code, name
+
+    def _day_key(day: str) -> int:
+        return WEEKDAY_ORDER.index(day) if day in WEEKDAY_ORDER else len(WEEKDAY_ORDER)
+
+    def _slot_start(slot: str) -> str:
+        return slot.split("-", 1)[0]
+
+    cells: dict[tuple[str, str], list[dict]] = {}
+    legend: dict[str, str] = {}
+    day_set: set[str] = set()
+    slot_set: set[str] = set()
+
+    for r in rows:
+        day = r.get("Day", "")
+        slot = r.get("Time", "")
+        code, name = _split_course(r.get("Course", ""))
+        day_set.add(day)
+        slot_set.add(slot)
+        cells.setdefault((day, slot), []).append({
+            "code": code,
+            "lecturer": r.get("Lecturer", ""),
+            "hall": r.get("Room", ""),
+        })
+        if code:
+            legend[code] = name
+
+    for cell in cells.values():
+        cell.sort(key=lambda c: c["code"])
+
+    days = sorted(day_set, key=_day_key)
+    slots = sorted(slot_set, key=_slot_start)
+    return {
+        "days": days,
+        "slots": slots,
+        "cells": cells,
+        "legend": sorted(legend.items(), key=lambda kv: kv[0]),
+    }
+
+
 def _resolve_class_filter(class_ids: str | None,
                           class_id: int | None) -> set[int] | None:
     """Build the set of class IDs to filter by from the request params.
