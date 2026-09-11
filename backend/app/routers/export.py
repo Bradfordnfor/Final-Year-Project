@@ -3,7 +3,6 @@ import functools
 import io
 import os
 from xml.sax.saxutils import escape
-from io import BytesIO
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -44,7 +43,7 @@ def _load_faded_logo(path: str):
         img = Image.open(path).convert("RGBA")
         alpha = img.split()[3].point(lambda a: int(a * 0.08))  # 8% opacity
         img.putalpha(alpha)
-        buf = BytesIO()
+        buf = io.BytesIO()
         img.save(buf, format="PNG")
         buf.seek(0)
         result = ImageReader(buf)
@@ -167,17 +166,21 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
 
 
 def _run_identity(run) -> str:
-    """University · faculty codes for the run's footer (minimal, no departments)."""
-    uni_name = ""
+    """University · faculty codes for the run's footer (minimal, no departments).
+
+    A run is normally scoped to one university, but collect distinct university
+    names (order-preserving) so a cross-university run lists all of them rather
+    than silently showing only the last faculty's institution."""
+    uni_names: list[str] = []
     fac_labels = []
     for rf in run.faculties:
         fac = rf.faculty
         if not fac:
             continue
         fac_labels.append(fac.code or fac.name)
-        if fac.university:
-            uni_name = fac.university.name
-    parts = [p for p in [uni_name, *fac_labels] if p]
+        if fac.university and fac.university.name not in uni_names:
+            uni_names.append(fac.university.name)
+    parts = [p for p in [*uni_names, *fac_labels] if p]
     return " · ".join(parts)
 
 
