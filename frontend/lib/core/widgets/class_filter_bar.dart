@@ -256,6 +256,10 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
             const SizedBox(width: 8),
             Expanded(
               child: DropdownButtonFormField<Map<String, dynamic>?>(
+                // This is a controlled dropdown reset on level change; the
+                // deprecated `value:` is required, as `initialValue` does not
+                // resync on rebuild (it would leave the old track selected).
+                // ignore: deprecated_member_use
                 value: _selectedTrackClass,
                 isExpanded: true,
                 decoration: const InputDecoration(
