@@ -38,6 +38,7 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
   Faculty? _selectedFaculty;
   Department? _selectedDept;
   Map<String, dynamic>? _selectedLevel;
+  Map<String, dynamic>? _selectedTrackClass; // one class of the level, or null = whole level
 
   bool _loadingFaculties = false;
   bool _loadingDepts = false;
@@ -111,7 +112,15 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
     setState(() {
       _selectedDept = d;
       _selectedLevel = null;
+      _selectedTrackClass = null;
     });
+  }
+
+  /// A level's specialization tracks (classes with a non-null track).
+  List<Map<String, dynamic>> _tracksOf(Map<String, dynamic>? level) {
+    if (level == null) return [];
+    final classes = (level['classes'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    return classes.where((c) => (c['track'] as String?) != null).toList();
   }
 
   /// Every class id at a level — includes all specialization tracks, so a
@@ -126,6 +135,9 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
   /// The class IDs covered by the current selection.
   List<int> _scope() {
     if (_selectedLevel != null) {
+      if (_selectedTrackClass != null) {
+        return [_selectedTrackClass!['id'] as int];
+      }
       return _classIdsOf(_selectedLevel!);
     }
     if (_selectedDept != null) {
@@ -147,6 +159,7 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
       _selectedFaculty = null;
       _selectedDept = null;
       _selectedLevel = null;
+      _selectedTrackClass = null;
       _departments = [];
       _deptLevels = {};
     });
@@ -233,9 +246,39 @@ class _ClassFilterBarState extends State<ClassFilterBar> {
                   .toList(),
               onChanged: _selectedDept == null
                   ? null
-                  : (l) => setState(() => _selectedLevel = l),
+                  : (l) => setState(() {
+                        _selectedLevel = l;
+                        _selectedTrackClass = null;
+                      }),
             ),
           ),
+          if (_tracksOf(_selectedLevel).isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Expanded(
+              child: DropdownButtonFormField<Map<String, dynamic>?>(
+                value: _selectedTrackClass,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Track (all)',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+                items: [
+                  const DropdownMenuItem<Map<String, dynamic>?>(
+                    value: null, child: Text('All tracks'),
+                  ),
+                  ..._tracksOf(_selectedLevel).map(
+                    (c) => DropdownMenuItem<Map<String, dynamic>?>(
+                      value: c, child: Text(c['track'] as String),
+                    ),
+                  ),
+                ],
+                onChanged: (c) => setState(() => _selectedTrackClass = c),
+              ),
+            ),
+          ],
           const SizedBox(width: 8),
           // View button — enabled once at least a faculty is chosen
           FilledButton(
