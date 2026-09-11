@@ -64,6 +64,11 @@ def get_public_levels(department_id: int, db: Session = Depends(get_db)):
             # Every class at the level, so a filtered/exported timetable
             # includes all specialization tracks, not just the first.
             "class_ids": [c.id for c in level.classes],
+            # Full classes so the filter can offer a per-track choice.
+            "classes": [
+                {"id": c.id, "name": c.name, "track": c.track}
+                for c in level.classes
+            ],
         })
     return result
 

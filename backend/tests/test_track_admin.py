@@ -62,3 +62,17 @@ def test_delete_class_allowed_when_unreferenced(client, auth_headers):
 
     r = client.delete(f"/classes/{net['id']}", headers=ctx["headers"])
     assert r.status_code == 204
+
+
+def test_public_levels_includes_classes_with_tracks(client, auth_headers):
+    ctx = setup_faculty_head(client, auth_headers)
+    lid = _level_id(client, ctx)
+    sw, net = _two_track_classes(client, ctx, lid)
+
+    levels = client.get(
+        f"/faculty-setup/public-levels?department_id={ctx['dept']['id']}"
+    ).json()
+    node = next(l for l in levels if l["number"] == 400)
+    by_track = {c["track"]: c for c in node["classes"]}
+    assert by_track["Software"]["id"] == sw["id"]
+    assert by_track["Networking"]["id"] == net["id"]
