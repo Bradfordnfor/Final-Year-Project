@@ -1,4 +1,5 @@
-from app.routers.export import _load_faded_logo
+import io
+from app.routers.export import _load_faded_logo, _pdf_title, _StampCanvas
 from app.models.timetable import (
     TimetableRun, TimetableEntry, TimetableEntryClass,
 )
@@ -44,6 +45,26 @@ def test_public_grid_pdf_requires_published(client, db, admin_user):
 
 def test_missing_logo_asset_is_not_fatal():
     assert _load_faded_logo("/no/such/logo.png") is None
+
+
+def test_pdf_title_escapes_ampersand_and_angle_brackets():
+    t = _pdf_title("Electrical & Electronic Engineering <X>", filtered=False)
+    assert "&amp;" in t and "&lt;X&gt;" in t
+    assert "& " not in t  # raw ampersand must not survive
+
+
+def test_pdf_title_filtered_suffix():
+    assert _pdf_title("R", filtered=True).endswith("(filtered)")
+    assert not _pdf_title("R", filtered=False).endswith("(filtered)")
+
+
+def test_stamp_canvas_identity_is_per_instance_not_shared():
+    # Two canvases with different identities must not clobber each other
+    # (the endpoints are sync def -> threadpool-concurrent).
+    c1 = _StampCanvas(io.BytesIO(), identity="University A")
+    c2 = _StampCanvas(io.BytesIO(), identity="University B")
+    assert c1.identity == "University A"
+    assert c2.identity == "University B"
 
 
 def test_csv_columns_unchanged(client, auth_headers, db, admin_user):

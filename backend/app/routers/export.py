@@ -1,4 +1,5 @@
 import csv
+import functools
 import io
 import os
 from xml.sax.saxutils import escape
@@ -183,12 +184,17 @@ def _run_identity(run) -> str:
 class _StampCanvas(canvas.Canvas):
     """Draws the faded logo watermark (centered) and a footer line
     (identity left, 'Page X of Y' right) on every page. Page total is known
-    only at save time, so pages are buffered."""
-    identity = ""
+    only at save time, so pages are buffered.
 
-    def __init__(self, *args, **kwargs):
+    `identity` is an instance attribute (injected per request via the
+    canvasmaker), never a class attribute — the endpoints are sync ``def`` and
+    thus run concurrently in a threadpool, so shared class state would let two
+    overlapping exports show each other's university in the footer."""
+
+    def __init__(self, *args, identity="", **kwargs):
         super().__init__(*args, **kwargs)
         self._saved = []
+        self.identity = identity
 
     def showPage(self):
         self._saved.append(dict(self.__dict__))
@@ -214,6 +220,16 @@ class _StampCanvas(canvas.Canvas):
         self.drawString(15 * mm, 8 * mm, self.identity)
         self.drawRightString(w - 15 * mm, 8 * mm,
                              f"Page {self._pageNumber} of {total}")
+
+
+def _pdf_title(run_name: str, filtered: bool) -> str:
+    """The grid PDF title, XML-escaped so names with & < > render literally
+    (e.g. "Electrical & Electronic Engineering") instead of being mangled or
+    silently dropped by ReportLab's Paragraph parser."""
+    title = f"Timetable — {escape(run_name)}"
+    if filtered:
+        title += " (filtered)"
+    return title
 
 
 def _grid_pdf_response(grid: dict, run, filtered: bool, filename: str) -> StreamingResponse:
@@ -263,7 +279,7 @@ def _grid_pdf_response(grid: dict, run, filtered: bool, filename: str) -> Stream
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f5")]),
     ]))
 
-    title = f"Timetable — {run.name}" + (" (filtered)" if filtered else "")
+    title = _pdf_title(run.name, filtered)
     story = [Paragraph(title, styles["Title"]), Spacer(1, 6), table, Spacer(1, 12)]
 
     if grid["legend"]:
@@ -273,8 +289,8 @@ def _grid_pdf_response(grid: dict, run, filtered: bool, filename: str) -> Stream
         )
         story.append(Paragraph(legend_lines, legend_style))
 
-    _StampCanvas.identity = _run_identity(run)
-    doc.build(story, canvasmaker=_StampCanvas)
+    stamp = functools.partial(_StampCanvas, identity=_run_identity(run))
+    doc.build(story, canvasmaker=stamp)
     buffer.seek(0)
     return StreamingResponse(
         buffer,
