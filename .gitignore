@@ -30,6 +30,10 @@ frontend/**/*.freezed.dart
 # Claude Code memory (local only)
 .claude/
 
+# Development planning scaffolding (internal, not part of the deliverable)
+.superpowers/
+docs/superpowers/
+
 # IDEs
 .vscode/
 .idea/
