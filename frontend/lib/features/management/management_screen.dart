@@ -2235,8 +2235,7 @@ class _SettingsTabState extends State<_SettingsTab> {
                 width: 120,
                 child: TextField(
                   controller: _pctCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
                     labelText: 'Allowance',
                     suffixText: '%',
