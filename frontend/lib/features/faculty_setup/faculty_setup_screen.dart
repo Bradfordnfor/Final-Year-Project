@@ -119,6 +119,45 @@ class _FacultySetupScreenState extends State<FacultySetupScreen> {
     }
   }
 
+  Future<Faculty?> _renameFaculty(Faculty faculty) async {
+    final nameCtrl = TextEditingController(text: faculty.name);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename Faculty'),
+        content: TextField(
+          controller: nameCtrl,
+          decoration: const InputDecoration(labelText: 'Faculty name'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    if (confirmed != true) return null;
+    final newName = nameCtrl.text.trim();
+    if (newName.isEmpty) return null;
+    try {
+      final resp = await _client.put('/faculties/${faculty.id}', data: {
+        'name': newName,
+        'code': faculty.code,
+        'sessions_per_week': faculty.sessionsPerWeek,
+        'session_duration_hours': faculty.sessionDurationHours,
+        'university_id': faculty.universityId,
+      });
+      await _loadFaculties();
+      return Faculty.fromJson(resp.data as Map<String, dynamic>);
+    } catch (e) {
+      Get.snackbar('Error', e.toString(), snackPosition: SnackPosition.BOTTOM);
+      return null;
+    }
+  }
+
   Future<void> _deleteFaculty(Faculty faculty) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -490,6 +529,7 @@ class _FacultySetupScreenState extends State<FacultySetupScreen> {
   // ── Department bottom sheet ───────────────────────────────────────────────────
 
   Future<void> _showFacultyDepartments(Faculty faculty) async {
+    Faculty current = faculty;
     List<Map<String, dynamic>> departments = [];
     bool loading = true;
     String? error;
@@ -550,7 +590,7 @@ class _FacultySetupScreenState extends State<FacultySetupScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(faculty.name,
+                              Text(current.name,
                                   style: Theme.of(ctx)
                                       .textTheme
                                       .titleMedium
@@ -562,6 +602,17 @@ class _FacultySetupScreenState extends State<FacultySetupScreen> {
                             ],
                           ),
                         ),
+                        if (_isUniversityAdmin)
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 20),
+                            tooltip: 'Rename Faculty',
+                            onPressed: () async {
+                              final updated = await _renameFaculty(current);
+                              if (updated != null) {
+                                setS(() => current = updated);
+                              }
+                            },
+                          ),
                       ],
                     ),
                   ),
