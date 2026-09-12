@@ -40,6 +40,9 @@ class ManagementScreen extends StatelessWidget {
 
       tabs.add(const Tab(icon: Icon(Icons.book_outlined), text: 'Courses'));
       views.add(const _CoursesTab());
+
+      tabs.add(const Tab(icon: Icon(Icons.tune_outlined), text: 'Settings'));
+      views.add(const _SettingsTab());
     }
 
     if (isLecturer) {
@@ -2151,5 +2154,109 @@ class _AvailabilityTabState extends State<_AvailabilityTab> {
         ],
       );
     }).toList();
+  }
+}
+
+// ─── Settings Tab ────────────────────────────────────────────────────────────
+
+class _SettingsTab extends StatefulWidget {
+  const _SettingsTab();
+  @override
+  State<_SettingsTab> createState() => _SettingsTabState();
+}
+
+class _SettingsTabState extends State<_SettingsTab> {
+  final _api = UniversityApi(ApiClient(token: AuthController.to.token));
+  final _pctCtrl = TextEditingController();
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final id = AuthController.to.user.value?.universityId;
+    if (id == null) {
+      setState(() => _loading = false);
+      return;
+    }
+    try {
+      final uni = await _api.getUniversity(id);
+      _pctCtrl.text = (uni.overflowThreshold * 100).toStringAsFixed(0);
+    } catch (e) {
+      Get.snackbar('Error', 'Could not load settings: $e',
+          snackPosition: SnackPosition.BOTTOM);
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _save() async {
+    final pct = double.tryParse(_pctCtrl.text.trim());
+    if (pct == null || pct < 0 || pct > 100) {
+      Get.snackbar('Invalid value', 'Enter a percentage between 0 and 100',
+          snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await _api.updateOverflowThreshold(pct / 100);
+      Get.snackbar('Saved', 'Overflow allowance updated',
+          snackPosition: SnackPosition.BOTTOM);
+    } catch (e) {
+      Get.snackbar('Error', 'Could not save: $e',
+          snackPosition: SnackPosition.BOTTOM);
+    }
+    if (mounted) setState(() => _saving = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Overflow Allowance',
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            'How many students beyond a room’s seat capacity may be packed '
+            'into a hall, as a percentage. Set to 0 for no overflow.',
+            style: TextStyle(color: Theme.of(context).colorScheme.outline),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              SizedBox(
+                width: 120,
+                child: TextField(
+                  controller: _pctCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Allowance',
+                    suffixText: '%',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              FilledButton(
+                onPressed: _saving ? null : _save,
+                child: _saving
+                    ? const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Save'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
