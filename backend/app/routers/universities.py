@@ -16,8 +16,9 @@ from app.models.timetable import (
 from app.schemas.university import (
     UniversityCreate, UniversityOut,
     UniversityWithAdminCreate, UniversityCreateResponse,
+    OverflowThresholdUpdate,
 )
-from app.core.permissions import get_current_user, require_super_admin
+from app.core.permissions import get_current_user, require_super_admin, require_university_admin
 from app.core.security import get_password_hash
 from app.services.email import get_email_sender, activation_link
 from app.routers.auth import send_activation
@@ -245,6 +246,26 @@ def create_university(
         admin_full_name=admin.full_name,
         admin_activation_link=link,
     )
+
+
+@router.patch("/me/overflow-threshold", response_model=UniversityOut)
+def update_my_overflow_threshold(
+    payload: OverflowThresholdUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_university_admin),
+):
+    if not current_user.university_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Your account is not attached to a university",
+        )
+    uni = db.get(University, current_user.university_id)
+    if not uni:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="University not found")
+    uni.overflow_threshold = payload.overflow_threshold
+    db.commit()
+    db.refresh(uni)
+    return uni
 
 
 @router.put("/{university_id}", response_model=UniversityOut)

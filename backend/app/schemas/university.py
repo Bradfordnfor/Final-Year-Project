@@ -1,5 +1,9 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class OverflowThresholdUpdate(BaseModel):
+    overflow_threshold: float = Field(ge=0.0, le=1.0)
 
 
 class UniversityCreate(BaseModel):
