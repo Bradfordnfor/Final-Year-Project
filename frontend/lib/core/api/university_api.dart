@@ -78,4 +78,17 @@ class UniversityApi {
     final response = await _client.get('/universities/$id/structure');
     return response.data as Map<String, dynamic>;
   }
+
+  Future<University> getUniversity(int id) async {
+    final response = await _client.get('/universities/$id');
+    return University.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<University> updateOverflowThreshold(double value) async {
+    final response = await _client.patch(
+      '/universities/me/overflow-threshold',
+      data: {'overflow_threshold': value},
+    );
+    return University.fromJson(response.data as Map<String, dynamic>);
+  }
 }
