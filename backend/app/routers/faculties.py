@@ -41,11 +41,17 @@ def update_faculty(
     faculty_id: int,
     payload: FacultyCreate,
     db: Session = Depends(get_db),
-    _=Depends(require_university_admin),
+    current_user=Depends(require_university_admin),
 ):
     obj = db.get(Faculty, faculty_id)
     if not obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Faculty not found")
+    if current_user.role != "super_admin" and obj.university_id != current_user.university_id:
+        # 404 (not 403) so a university admin can't probe for another
+        # university's faculty IDs — mirrors the department rename pattern.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Faculty not found")
+    if not payload.name.strip():
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
     for k, v in payload.model_dump().items():
         setattr(obj, k, v)
     db.commit()

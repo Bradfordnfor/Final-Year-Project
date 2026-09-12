@@ -19,13 +19,20 @@ router = APIRouter(prefix="/faculty-setup", tags=["Faculty Setup"])
 _ADMIN_ROLES = {"super_admin", "university_admin"}
 
 
-def _resolve_faculty_id(current_user: User, faculty_id: Optional[int]) -> int:
+def _resolve_faculty_id(current_user: User, faculty_id: Optional[int], db: Session) -> int:
     if current_user.role in _ADMIN_ROLES:
         if not faculty_id:
             raise HTTPException(
                 status_code=400,
                 detail="Admins must provide ?faculty_id=<id> to manage a faculty",
             )
+        if current_user.role != "super_admin":
+            # A university_admin may only manage a faculty within their own
+            # university. 404 (not 403) so they can't probe for the
+            # existence of another university's faculty IDs.
+            fac = db.get(Faculty, faculty_id)
+            if not fac or fac.university_id != current_user.university_id:
+                raise HTTPException(status_code=404, detail="Faculty not found")
         return faculty_id
     if not current_user.faculty_id:
         raise HTTPException(status_code=403, detail="No faculty assigned to your account")
@@ -94,7 +101,7 @@ def get_faculty_tree(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_faculty_head),
 ):
-    fac_id = _resolve_faculty_id(current_user, faculty_id)
+    fac_id = _resolve_faculty_id(current_user, faculty_id, db)
     faculty = db.get(Faculty, fac_id)
     if not faculty:
         raise HTTPException(status_code=404, detail="Faculty not found")
@@ -160,7 +167,7 @@ def list_my_departments(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_faculty_head),
 ):
-    fac_id = _resolve_faculty_id(current_user, faculty_id)
+    fac_id = _resolve_faculty_id(current_user, faculty_id, db)
     return db.query(Department).filter(Department.faculty_id == fac_id).all()
 
 
@@ -171,7 +178,7 @@ def create_department(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_faculty_head),
 ):
-    fac_id = _resolve_faculty_id(current_user, faculty_id)
+    fac_id = _resolve_faculty_id(current_user, faculty_id, db)
     obj = Department(name=payload.name, code=payload.code, faculty_id=fac_id)
     db.add(obj)
     db.commit()
@@ -186,7 +193,7 @@ def delete_department(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_faculty_head),
 ):
-    fac_id = _resolve_faculty_id(current_user, faculty_id)
+    fac_id = _resolve_faculty_id(current_user, faculty_id, db)
     obj = db.query(Department).filter(Department.id == dept_id, Department.faculty_id == fac_id).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Department not found")
@@ -210,7 +217,7 @@ def rename_department(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_faculty_head),
 ):
-    fac_id = _resolve_faculty_id(current_user, faculty_id)
+    fac_id = _resolve_faculty_id(current_user, faculty_id, db)
     obj = db.query(Department).filter(
         Department.id == dept_id, Department.faculty_id == fac_id
     ).first()
@@ -247,7 +254,7 @@ def create_level(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_faculty_head),
 ):
-    fac_id = _resolve_faculty_id(current_user, faculty_id)
+    fac_id = _resolve_faculty_id(current_user, faculty_id, db)
     dept = db.query(Department).filter(
         Department.id == payload.department_id, Department.faculty_id == fac_id
     ).first()
@@ -275,7 +282,7 @@ def list_levels_for_dept(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_faculty_head),
 ):
-    fac_id = _resolve_faculty_id(current_user, faculty_id)
+    fac_id = _resolve_faculty_id(current_user, faculty_id, db)
     dept = db.query(Department).filter(Department.id == dept_id, Department.faculty_id == fac_id).first()
     if not dept:
         raise HTTPException(status_code=403, detail="Department not in your faculty")
@@ -289,7 +296,7 @@ def delete_level(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_faculty_head),
 ):
-    fac_id = _resolve_faculty_id(current_user, faculty_id)
+    fac_id = _resolve_faculty_id(current_user, faculty_id, db)
     level = db.get(Level, level_id)
     if not level:
         raise HTTPException(status_code=404, detail="Level not found")
@@ -341,7 +348,7 @@ def create_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_faculty_head),
 ):
-    fac_id = _resolve_faculty_id(current_user, faculty_id)
+    fac_id = _resolve_faculty_id(current_user, faculty_id, db)
     dept = db.query(Department).filter(
         Department.id == payload.department_id, Department.faculty_id == fac_id
     ).first()
@@ -380,7 +387,7 @@ def update_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_faculty_head),
 ):
-    fac_id = _resolve_faculty_id(current_user, faculty_id)
+    fac_id = _resolve_faculty_id(current_user, faculty_id, db)
     obj = db.get(Course, course_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Course not found")
@@ -405,7 +412,7 @@ def delete_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_faculty_head),
 ):
-    fac_id = _resolve_faculty_id(current_user, faculty_id)
+    fac_id = _resolve_faculty_id(current_user, faculty_id, db)
     obj = db.get(Course, course_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Course not found")
