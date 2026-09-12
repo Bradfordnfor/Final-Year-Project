@@ -287,6 +287,38 @@ class _FacultySetupScreenState extends State<FacultySetupScreen> {
     }
   }
 
+  Future<void> _renameDepartment(int deptId, String currentName) async {
+    final nameCtrl = TextEditingController(text: currentName);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename Department'),
+        content: TextField(
+          controller: nameCtrl,
+          decoration: const InputDecoration(labelText: 'Name'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final newName = nameCtrl.text.trim();
+    if (newName.isEmpty) return;
+    try {
+      await _client.patch('/faculty-setup/departments/$deptId$_fq',
+          data: {'name': newName});
+      _loadTree();
+    } catch (e) {
+      Get.snackbar('Error', e.toString(), snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
   Future<void> _addLevel(int deptId) async {
     final numCtrl = TextEditingController();
     final popCtrl = TextEditingController();
@@ -947,6 +979,8 @@ class _FacultySetupScreenState extends State<FacultySetupScreen> {
               dept: dept,
               onAddLevel: () => _addLevel(dept['id'] as int),
               onDeleteDept: () => _deleteDepartment(dept['id'] as int),
+              onRename: () =>
+                  _renameDepartment(dept['id'] as int, dept['name'] as String),
               onAddCourse: (levelId) =>
                   _addCourse(levelId, dept['id'] as int),
               onDeleteLevel: (levelId) => _deleteLevel(levelId),
@@ -1019,6 +1053,7 @@ class _DepartmentCard extends StatefulWidget {
   final Map<String, dynamic> dept;
   final VoidCallback onAddLevel;
   final VoidCallback onDeleteDept;
+  final VoidCallback onRename;
   final Future<void> Function(int levelId) onAddCourse;
   final void Function(int levelId) onDeleteLevel;
   final void Function(int courseId) onDeleteCourse;
@@ -1028,6 +1063,7 @@ class _DepartmentCard extends StatefulWidget {
     required this.dept,
     required this.onAddLevel,
     required this.onDeleteDept,
+    required this.onRename,
     required this.onAddCourse,
     required this.onDeleteLevel,
     required this.onDeleteCourse,
@@ -1089,6 +1125,11 @@ class _DepartmentCardState extends State<_DepartmentCard> {
                     icon: const Icon(Icons.add_circle_outline, size: 20),
                     onPressed: widget.onAddLevel,
                     tooltip: 'Add Level',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 20),
+                    onPressed: widget.onRename,
+                    tooltip: 'Rename Department',
                   ),
                   IconButton(
                     icon: Icon(Icons.delete_outline,
