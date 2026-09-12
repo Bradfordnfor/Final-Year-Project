@@ -94,3 +94,23 @@ def test_lecturer_cannot_rename_department(client, db):
     resp = client.patch(f"/faculty-setup/departments/{dept.id}",
                         json={"name": "Nope"}, headers=headers)
     assert resp.status_code == 403
+
+
+def test_university_admin_renames_faculty(client, auth_headers):
+    uni = make_university(client, auth_headers, name="UB", slug="ub")
+    admin = _login(client, "admin_ub@test.com")
+    created = client.post("/faculties/", json={
+        "name": "Faculty of Engineering", "code": "FET",
+        "sessions_per_week": 2, "session_duration_hours": 2,
+        "university_id": uni["id"],
+    }, headers=admin)
+    assert created.status_code == 201
+    fac = created.json()
+    resp = client.put(f"/faculties/{fac['id']}", json={
+        "name": "Faculty of Engineering and Technology", "code": fac["code"],
+        "sessions_per_week": fac["sessions_per_week"],
+        "session_duration_hours": fac["session_duration_hours"],
+        "university_id": fac["university_id"],
+    }, headers=admin)
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Faculty of Engineering and Technology"
