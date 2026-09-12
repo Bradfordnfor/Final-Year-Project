@@ -150,6 +150,10 @@ class DepartmentOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DepartmentRename(BaseModel):
+    name: str
+
+
 @router.get("/departments", response_model=list[DepartmentOut])
 def list_my_departments(
     faculty_id: Optional[int] = Query(None),
@@ -196,6 +200,29 @@ def delete_department(
     db.query(Level).filter(Level.department_id == dept_id).delete(synchronize_session=False)
     db.delete(obj)
     db.commit()
+
+
+@router.patch("/departments/{dept_id}", response_model=DepartmentOut)
+def rename_department(
+    dept_id: int,
+    payload: DepartmentRename,
+    faculty_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_faculty_head),
+):
+    fac_id = _resolve_faculty_id(current_user, faculty_id)
+    obj = db.query(Department).filter(
+        Department.id == dept_id, Department.faculty_id == fac_id
+    ).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Department not found")
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
+    obj.name = name
+    db.commit()
+    db.refresh(obj)
+    return obj
 
 
 # ─── Levels (each level auto-creates its single class) ───────────────────────
