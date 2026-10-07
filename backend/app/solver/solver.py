@@ -1,7 +1,88 @@
 import os
-from collections import defaultdict
+from collections import Counter, defaultdict
 from ortools.sat.python import cp_model
 from app.solver.models import SolverInput, SolverAssignment, SolverResult
+
+
+def explain_infeasibility(solver_input: SolverInput) -> str:
+    """Best-effort, human-readable reason a model came back INFEASIBLE.
+
+    Checks the hard-constraint headroom the same way the model enforces it and
+    returns the first shortfall found. Room capacity/overflow is only a soft
+    penalty in solve_timetable(), so it can never cause infeasibility and is
+    deliberately not mentioned here.
+    """
+    sessions = solver_input.sessions
+    time_slots = solver_input.time_slots
+    rooms = solver_input.rooms
+    n_t = len(time_slots)
+    n_r = len(rooms)
+    n_s = len(sessions)
+
+    # A required room type with no matching room at all.
+    rooms_by_type = Counter(r["room_type"] for r in rooms)
+    sess_by_type = Counter(s.room_type_required for s in sessions)
+    missing = sorted(t for t in sess_by_type if rooms_by_type.get(t, 0) == 0)
+    if missing:
+        return (
+            "Some sessions need a room type the selected buildings don't have: "
+            + ", ".join(missing)
+            + ". Add a room of that type (or a building that has one), then regenerate."
+        )
+
+    # Not enough room-slots overall to hold every session.
+    if n_s > n_t * n_r:
+        return (
+            f"There isn't enough room in the timetable: {n_s} sessions must each take "
+            f"a room in a time slot, but the selected buildings provide only {n_r} "
+            f"rooms x {n_t} time slots = {n_t * n_r} openings. Add more buildings or "
+            "rooms, or define more time slots, then regenerate."
+        )
+
+    # A single room type is oversubscribed.
+    for t, need in sess_by_type.items():
+        avail = rooms_by_type.get(t, 0) * n_t
+        if need > avail:
+            return (
+                f"Too many '{t}' sessions: {need} are needed but only "
+                f"{rooms_by_type.get(t, 0)} '{t}' room(s) x {n_t} time slots = {avail} "
+                "openings are available. Add more rooms of that type or more time "
+                "slots, then regenerate."
+            )
+
+    # A lecturer has more sessions than they have free time slots.
+    slot_ids = {ts["id"] for ts in time_slots}
+    unavail = solver_input.lecturer_unavailability
+    lect_counts = Counter(s.lecturer_id for s in sessions)
+    for lect_id, cnt in lect_counts.items():
+        free = n_t - len(set(unavail.get(lect_id, [])) & slot_ids)
+        if cnt > free:
+            return (
+                f"A lecturer is assigned {cnt} sessions but has only {free} free time "
+                "slots (one session can run per slot). Reduce that lecturer's courses, "
+                "free up their availability, or add more time slots, then regenerate."
+            )
+
+    # A class has more sessions than there are time slots.
+    class_counts: dict[int, int] = defaultdict(int)
+    for s in sessions:
+        for cid in s.class_ids:
+            class_counts[cid] += 1
+    for cid, cnt in class_counts.items():
+        if cnt > n_t:
+            return (
+                f"A class has {cnt} sessions but there are only {n_t} time slots (a "
+                "class can attend one session per slot). Reduce that class's "
+                "courses/weekly hours or add more time slots, then regenerate."
+            )
+
+    # No single obvious shortfall — the constraints just can't all be met together.
+    return (
+        "The timetable's constraints can't all be satisfied at once — usually too "
+        "many sessions for the available rooms and time slots, or unavoidable "
+        "lecturer/class clashes. Add rooms or time slots, or reduce the load, then "
+        "regenerate."
+    )
 
 
 def solve_timetable(solver_input: SolverInput) -> SolverResult:

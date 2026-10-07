@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../api/api_client.dart';
@@ -116,15 +117,41 @@ class TimetableController extends GetxController {
         isGenerating.value = false;
         if (jobStatus.value == 'completed') {
           await selectRun(runId);
+          _showGenerationSummary(status);
         } else {
           final msg = status['error_message'] as String? ??
               'Generation failed. Please review the run and try again.';
-          Get.snackbar('Generation failed', msg,
-              snackPosition: SnackPosition.BOTTOM,
-              duration: const Duration(seconds: 6));
+          _showDialog('Could not generate timetable', msg);
         }
       }
     });
+  }
+
+  void _showDialog(String title, String message) {
+    Get.dialog(
+      AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
+  // One-time summary shown right after a run finishes: how full the timetable
+  // ended up (sessions placed vs. the slots x rooms that were available).
+  void _showGenerationSummary(Map<String, dynamic> status) {
+    final sessions = status['session_count'] as int?;
+    final slots = status['slot_count'] as int?;
+    final rooms = status['room_count'] as int?;
+    if (sessions == null || slots == null || rooms == null) return;
+    final capacity = slots * rooms;
+    _showDialog(
+      'Timetable generated',
+      '$sessions sessions were scheduled into $slots time slots across '
+          '$rooms rooms ($capacity slot-openings available).',
+    );
   }
 
   Future<void> advanceStatus(int runId) async {

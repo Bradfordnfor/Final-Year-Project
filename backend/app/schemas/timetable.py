@@ -63,6 +63,11 @@ class GenerationJobResponse(BaseModel):
     error_message: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    # Populated only for a completed run, so the UI can show a short summary
+    # of how full the timetable is (sessions placed vs. slots x rooms available).
+    session_count: Optional[int] = None
+    slot_count: Optional[int] = None
+    room_count: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

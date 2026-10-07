@@ -351,7 +351,33 @@ def get_job_status(run_id: int, db: Session = Depends(get_db), _: User = Depends
     )
     if not job:
         return GenerationJobResponse(status="no_job")
-    return job
+    resp = GenerationJobResponse(
+        status=job.status,
+        error_message=job.error_message,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+    )
+    # For a completed run, add a short "how full is it" summary the UI shows once:
+    # sessions actually placed vs. the slots x rooms that were available.
+    if job.status == "completed":
+        from app.models.academic import TimeSlot
+        from app.models.room import Room
+        run = db.get(TimetableRun, run_id)
+        building_ids = [rb.building_id for rb in run.buildings] if run else []
+        resp.session_count = (
+            db.query(TimetableEntry).filter(TimetableEntry.run_id == run_id).count()
+        )
+        resp.slot_count = (
+            db.query(TimeSlot).filter(TimeSlot.semester_id == run.semester_id).count()
+            if run else 0
+        )
+        resp.room_count = (
+            db.query(Room)
+            .filter(Room.building_id.in_(building_ids), Room.is_active == True)  # noqa: E712
+            .count()
+            if building_ids else 0
+        )
+    return resp
 
 
 @router.get("/runs/{run_id}/readiness")
@@ -873,8 +899,16 @@ def _run_generation(run_id: int, job_id: int) -> None:
                 run.generated_at = datetime.utcnow()
                 job.status = "completed"
             else:
+                from app.solver.solver import explain_infeasibility
                 job.status = "failed"
-                job.error_message = f"Solver returned status: {result.status}"
+                if result.status == "infeasible":
+                    job.error_message = explain_infeasibility(solver_input)
+                else:  # "unknown": hit the time limit without proving anything
+                    job.error_message = (
+                        "The scheduler ran out of time before finding a workable "
+                        "timetable, which usually means the timetable is very tight. "
+                        "Add more rooms or time slots to give it room, then try again."
+                    )
         else:
             job.status = "failed"
             job.error_message = (
