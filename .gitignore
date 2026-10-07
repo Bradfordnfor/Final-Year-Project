@@ -67,3 +67,5 @@ docs/report/diagrams/plantuml.jar
 
 # Generated dissertation build output (regenerate with build_report.py)
 docs/report/Dissertation.docx
+docs/report/Dissertation_clean.docx
+docs/report/Dissertation_print.docx
