@@ -44,8 +44,24 @@ docs/superpowers/
 .DS_Store
 Thumbs.db
 
-# Generated lecturer credentials (contains plaintext passwords)
+# Generated lecturer credentials / exports (may contain plaintext passwords or PII)
 lecturer_credentials.csv
+lecturers_export.csv
+*_credentials.csv
+*_export.csv
+
+# JVM crash dumps (junk)
+hs_err_pid*.log
+replay_pid*.log
+
+# MS Office lock/temp files
+~$*.docx
+~$*.xlsx
+
+# Python bytecode (any location, not just backend/)
+__pycache__/
+*.pyc
+*.pyo
 # PlantUML renderer binary (downloaded tool, not source)
 docs/report/diagrams/plantuml.jar
 
